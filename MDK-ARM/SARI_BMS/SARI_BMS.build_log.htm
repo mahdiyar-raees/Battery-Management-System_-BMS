@@ -1,0 +1,114 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: µVision V5.31.0.0
+Copyright (C) 2020 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: a a, a, LIC=IC93N-YZAZG-5BQEB-2DYU5-25WIU-JBT47
+ 
+Tool Versions:
+Toolchain:       MDK-ARM Professional  Version: 5.31.0.0
+Toolchain Path:  C:\Keil_v5\ARM\ARMCC\Bin
+C Compiler:      Armcc.exe V5.06 update 6 (build 750)
+Assembler:       Armasm.exe V5.06 update 6 (build 750)
+Linker/Locator:  ArmLink.exe V5.06 update 6 (build 750)
+Library Manager: ArmAr.exe V5.06 update 6 (build 750)
+Hex Converter:   FromElf.exe V5.06 update 6 (build 750)
+CPU DLL:         SARMCM3.DLL V5.31.0.0
+Dialog DLL:      DCM.DLL V1.17.3.0
+Target DLL:      STLink\ST-LINKIII-KEIL_SWO.dll V3.0.7.0
+Dialog DLL:      TCM.DLL V1.46.0.0
+ 
+<h2>Project:</h2>
+D:\STM32 Project\SARI_PROJECT\SARI_BMS\final\final\MDK-ARM\SARI_BMS.uvprojx
+Project File Date:  12/11/2021
+
+<h2>Output:</h2>
+*** Using Compiler 'V5.06 update 6 (build 750)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
+Rebuild target 'SARI_BMS'
+assembling startup_stm32f103xb.s...
+compiling stm32f1xx_it.c...
+compiling stm32f1xx_hal_gpio_ex.c...
+compiling stm32f1xx_hal_msp.c...
+compiling main.c...
+..\header\SEMIFUNCTION.h(25): warning:  #1-D: last line of file ends without a newline
+  	
+..\header\TYPEDEF.h(222): warning:  #1-D: last line of file ends without a newline
+  			
+..\header\CONTROL.h(61): warning:  #1-D: last line of file ends without a newline
+  	
+../Core/Src/main.c(244): warning:  #1295-D: Deprecated declaration AFE_ReadLDVoltage - give arg types
+  uint16_t AFE_ReadLDVoltage();
+../Core/Src/main.c(1012): warning:  #177-D: variable "row1"  was declared but never referenced
+  				static 	     uint8_t  row1;
+../Core/Src/main.c(1013): warning:  #177-D: variable "col1"  was declared but never referenced
+  				static 	     uint8_t  col1;
+../Core/Src/main.c(1434): warning:  #177-D: variable "cnt"  was declared but never referenced
+  		register		uint8_t  		cnt;
+../Core/Src/main.c(1584): warning:  #177-D: variable "str"  was declared but never referenced
+  				uint8_t str[40];
+../Core/Src/main.c(3517): warning:  #177-D: variable "counter"  was declared but never referenced
+  					register     uint8_t   counter=0;	
+../Core/Src/main.c(3518): warning:  #177-D: variable "inner_counter"  was declared but never referenced
+  					register     uint8_t   inner_counter=0;					
+../Core/Src/main.c(3519): warning:  #177-D: variable "temperature_mean"  was declared but never referenced
+  											 double    temperature_mean;							
+../Core/Src/main.c(3563): warning:  #177-D: variable "row1"  was declared but never referenced
+  				static 	     uint8_t  row1;
+../Core/Src/main.c(3564): warning:  #177-D: variable "col1"  was declared but never referenced
+  				static 	     uint8_t  col1;
+../Core/Src/main.c(4006): warning:  #167-D: argument of type "uint8_t *" is incompatible with parameter of type "char *restrict"
+  				sprintf(str,"\r\n%d",system_flag.FLAG);
+../Core/Src/main.c: 14 warnings, 0 errors
+compiling stm32f1xx_hal.c...
+compiling stm32f1xx_hal_adc_ex.c...
+compiling stm32f1xx_hal_adc.c...
+compiling stm32f1xx_hal_rcc.c...
+compiling stm32f1xx_hal_cortex.c...
+compiling stm32f1xx_hal_rcc_ex.c...
+compiling stm32f1xx_hal_gpio.c...
+compiling stm32f1xx_hal_dma.c...
+compiling stm32f1xx_hal_exti.c...
+compiling stm32f1xx_hal_flash.c...
+compiling stm32f1xx_hal_pwr.c...
+compiling stm32f1xx_hal_flash_ex.c...
+compiling stm32f1xx_hal_iwdg.c...
+compiling stm32f1xx_hal_crc.c...
+compiling stm32f1xx_hal_spi.c...
+compiling stm32f1xx_hal_i2c.c...
+compiling system_stm32f1xx.c...
+compiling stm32f1xx_hal_tim_ex.c...
+compiling stm32f1xx_hal_uart.c...
+compiling stm32f1xx_hal_tim.c...
+compiling AT24Cxx.c...
+linking...
+Program Size: Code=24704 RO-data=292 RW-data=144 ZI-data=4216  
+FromELF: creating hex file...
+"SARI_BMS\SARI_BMS.axf" - 0 Error(s), 14 Warning(s).
+
+<h2>Software Packages used:</h2>
+
+Package Vendor: ARM
+                http://www.keil.com/pack/ARM.CMSIS.5.7.0.pack
+                ARM.CMSIS.5.7.0
+                CMSIS (Cortex Microcontroller Software Interface Standard)
+   * Component: CORE Version: 5.4.0
+
+Package Vendor: Keil
+                http://www.keil.com/pack/Keil.STM32F1xx_DFP.2.3.0.pack
+                Keil.STM32F1xx_DFP.2.3.0
+                STMicroelectronics STM32F1 Series Device Support, Drivers and Examples
+
+<h2>Collection of Component include folders:</h2>
+  .\RTE\_SARI_BMS
+  C:\Users\NP\AppData\Local\Arm\Packs\ARM\CMSIS\5.7.0\CMSIS\Core\Include
+  C:\Users\NP\AppData\Local\Arm\Packs\Keil\STM32F1xx_DFP\2.3.0\Device\Include
+
+<h2>Collection of Component Files used:</h2>
+
+   * Component: ARM::CMSIS:CORE:5.4.0
+Build Time Elapsed:  00:00:19
+</pre>
+</body>
+</html>

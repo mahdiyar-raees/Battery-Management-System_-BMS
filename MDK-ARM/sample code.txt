@@ -1,0 +1,3478 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include <SetPoint.h>
+#include <SEMIFUNCTION.h>
+#include <TYPEDEF.h>
+#include "AT24Cxx.h"
+#include <DEBUG.h>
+#define MAX_BUFFER_SIZE     10  //Max buffer size
+#define CHARGER_MIN_VOLTAGE					(CHARGER_LOW_MAX_HYSTER  - 1800) 	//unit 10mv
+#define CHARGER_MAX_VOLTAGE					(CHARGER_HIGH_MIN_HYSTER - 1800) //unit mv
+#define CHARGER_MIN_VOLTAGE_LOW			(CHARGER_LOW_MIN_HYSTER  - 1800) 	//unit mv
+#define CHARGER_MAX_VOLTAGE_HIGH		(CHARGER_HIGH_MAX_HYSTER - 1800) //unit mv 
+#include "stdio.h"
+#include "CONTROL.h"
+
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
+
+CRC_HandleTypeDef hcrc;
+
+I2C_HandleTypeDef hi2c2;
+
+SPI_HandleTypeDef hspi1;
+
+TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
+
+UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart3;
+
+/* USER CODE BEGIN PV */
+
+// Variables for cell voltages, temperatures, CC2 current, Stack voltage, PACK Pin voltage, LD Pin voltage
+uint16_t 		CellVoltage [16][IMEDIATE_BUFFER_SIZE] ;
+//variable that work with BQ variable
+uint16_t    cell_array[16][MEAN_BUFFER_SIZE] ; 
+
+
+uint16_t Stack_Voltage[IMEDIATE_BUFFER_SIZE] ;
+uint16_t Stack_Voltage_array[MEAN_BUFFER_SIZE] ;
+
+
+
+uint16_t PACK_Current[IMEDIATE_BUFFER_SIZE];
+uint16_t PACK_Current_array[MEAN_BUFFER_SIZE];
+
+
+
+
+				//temouture variable
+						ADC_BUFFER_t temputure[8];
+						uint16_t  temp[8][IMEDIATE_BUFFER_SIZE];
+						uint16_t  temp_array[8][MEAN_BUFFER_SIZE];
+
+				// system flag variable
+						SYSTEM_FLAG_t flag; 
+				// usart 1 variable recive PC command
+						uint8_t usart_PC_command;
+
+						FULT_FLAG_t  system_flag;
+
+				// State machine 
+						SYSTEM_MODE_t system_state = init;
+						STATE_MODE_t  state= step1;
+						
+						BQ_FULT_STATUS_t fualt_status;
+						FET_STATUS_t     fet_status;
+
+
+
+uint8_t TX_2Byte [2] = {0x00, 0x00};
+uint8_t TX_3Byte [3] = {0x00, 0x00, 0x00};
+uint8_t TX_4Byte [4] = {0x00, 0x00, 0x00, 0x00};
+uint8_t TX_6Byte [6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t TX_Buffer [MAX_BUFFER_SIZE] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+uint8_t spiData [2];
+uint8_t spiRxData [2];
+uint8_t rxdata [2];
+
+
+
+
+uint8_t RX_2Byte [2] = {0x00, 0x00};
+uint8_t RX_3Byte [3] = {0x00, 0x00, 0x00};
+uint8_t RX_4Byte [4] = {0x00, 0x00, 0x00, 0x00};
+uint8_t RX_6Byte [6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t RX_12Byte [12] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t RX_Buffer [MAX_BUFFER_SIZE] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+
+
+				BATTERY_STATUS_t barraty_status; 
+
+
+#if TEST
+uint16_t Vcell1;
+uint16_t Vcell2;
+uint16_t Vcell3;
+uint16_t Vcell4;
+uint16_t Vcell16;
+uint16_t PACK_Current1 = 0x00;
+uint16_t hystersis_cov;
+uint16_t hystersis_cuv;
+uint8_t RX_32Byte [32];
+uint16_t LD_VOLTAGE;
+uint32_t  average_cell_temp ;
+uint32_t  fet_temp					;
+uint32_t  MAX_CELL_TEMP			;
+uint32_t  MIN_CELL_TEMP			;
+uint32_t  AVG_CELL_TEMP			;
+uint16_t CB_ActiveCells;
+uint16_t stack;
+uint32_t internaldie ;
+
+#endif
+
+
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_I2C2_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_USART3_UART_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_SPI1_Init(void);
+static void MX_CRC_Init(void);
+/* USER CODE BEGIN PFP */
+void ALL_CHARGE_ON(void);
+void ALL_DECHARGE_ON(void);
+void CURRENT_CHARGE(double);
+void CURRENT_DECHARGE(void);
+void ERROR_check(void);
+void EMERGANCY_handeler(void);
+void REST_handeler(void);
+void CHARGE_handeler(void);
+void DECHARG_handeler(void);
+void SET_INIT(void);
+void EMERGANCY_CHECK(void);
+void ALL_PDSG_ON(void);
+void ALL_PDSG_OFF(void);
+void PACK_CHECK(void);
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+void delayUS(uint32_t us);
+unsigned char Checksum(unsigned char *ptr, unsigned char len);
+void SPI_WriteReg(uint8_t reg_addr, uint8_t *reg_data, uint8_t count);
+
+void             SPI_ReadReg(uint8_t reg_addr, uint8_t *reg_data, uint8_t count) ;	
+void             AFE_Reset(void);
+void             AFE_Init(void);
+uint16_t         AFE_ReadCellVoltage(uint8_t channel);
+uint16_t         AFE_ReadStackVoltage(void);
+uint16_t         AFE_ReadCurrent(void);
+uint16_t         AFE_ReadPackVoltage(void);
+void             AFE_ALL_FETS_ON(void);
+void             AFE_ALL_FETS_OFF(void);
+void             AFE_CHG_ON(void);
+void             AFE_DSG_ON(void);
+void             AFE_FET_ENABLE(void) ;
+void             ALL_FET_OFF(void);
+void             AFE_SLEEP_DISABLE(void);
+FET_STATUS_t     AFE_ReadFETStatus(void);
+void             AFE_ALL_FETS_ON(void); 
+uint16_t         AFE_ReadAlarmStatus(void);
+BQ_FULT_STATUS_t AFE_ReadSafetyStatus(void);
+void             BQ_FOUNDER(void);
+BATTERY_STATUS_t AFE_BatteryStatus(void);
+double           ERROR_check_charge(void);
+uint8_t          RELEASE_check_COV(void);
+uint8_t          RELEASE_check_CUV(void);
+uint8_t          temperature_release(void);
+void 							send_to_pc(void);
+
+#if TEST
+void AFE_ReadPassQ(void);
+void CB_ACTIVE_CELLS(void);
+uint32_t AFE_ReadInternaldie(void);
+uint16_t AFE_ReadLDVoltage();
+#endif
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+
+			if(htim ->Instance == TIM3)
+				{
+					flag.FLAGS.temputure =1;
+				}
+			if(htim ->Instance == TIM4)
+				{
+					flag.FLAGS.BQ_scan =1;
+					flag.FLAGS.Current =1;
+				}
+}
+
+		
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+		
+		DEBUG_PRINT(alert work);
+		DFET_SET;
+
+		state        = step1;
+
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+
+
+				if(usart_PC_command =='d')
+					{
+						system_state = decharge;
+						state= step1;
+					}
+				else if(usart_PC_command =='r')
+					{
+						state= step1;
+						system_state = rest;	
+					}
+				else if(usart_PC_command =='c')
+					{
+						system_state = charge;
+						state= step1;
+					}	
+
+				else if(usart_PC_command =='a')
+					{
+						send_to_pc();
+					}	
+
+				usart_PC_command=0;
+
+			HAL_UART_Receive_IT(&huart1,&usart_PC_command,1);
+}
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_ADC1_Init();
+  MX_I2C2_Init();
+  MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
+  MX_TIM1_Init();
+  MX_SPI1_Init();
+  MX_CRC_Init();
+  /* USER CODE BEGIN 2 */
+HAL_TIM_Base_Start(&htim1);	
+HAL_UART_Receive_IT(&huart1,&usart_PC_command,1);
+#if ERROR_TEMP
+HAL_ADC_Start_DMA(&hadc1,&temputure[0].ADC_DATA,8);
+#endif
+//check that device wasn't at the emergancy state 
+LED_BLUE_OFF;
+LED_GREEN_OFF;
+LED_RED_OFF;
+SET_INIT();
+#if EMERGANCY_CHECKING
+EMERGANCY_CHECK();
+#endif
+HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET);
+SHUTDOWN_RESET;
+DFET_RESET;
+
+AFE_SLEEP_DISABLE();
+	
+	delayUS(10000);
+#if BQ_FINDER
+AFE_Reset();
+HAL_Delay(100);
+BQ_FOUNDER();
+#endif
+AFE_Reset();
+
+AFE_SLEEP_DISABLE();
+
+#if BQ_CHECK_ERROR
+AFE_Init();
+#endif
+delayUS(10000);
+
+LED_RED_ON;
+delayUS(60000); delayUS(60000); delayUS(60000); delayUS(60000); 
+
+
+LED_BLUE_ON;
+
+DEBUG_PRINT(system check);
+
+HAL_TIM_Base_Start_IT(&htim3);
+HAL_TIM_Base_Start_IT(&htim4);	
+
+system_state= rest;
+system_flag.FLAGS.Init =0;
+state = step1;
+
+
+/* USER CODE END 2 */
+LED_GREEN_ON;
+while (1)
+  {
+    /* USER CODE END WHILE */
+		
+    /* USER CODE BEGIN 3 */
+		
+		#if TEST
+		if(HAL_GPIO_ReadPin(PB1_GPIO_Port,PB1_Pin)==0)
+			{
+				DFET_SET;
+			}
+		#endif
+			switch (system_state)
+			{
+			case init:
+				break;
+			case rest:
+				REST_handeler();
+				break;
+			case charge:
+				CHARGE_handeler();
+				break;
+			case decharge:
+				DECHARG_handeler();
+				break;
+			case emergancy:
+				EMERGANCY_handeler();
+				break;
+			default:
+				system_flag.FLAGS.OUT_OF_STATE_WORK=1;
+				EMERGANCY_handeler();
+				break;
+			}
+			
+			#if TEST
+			Vcell1 = AFE_ReadCellVoltage(1);
+			Vcell2 = AFE_ReadCellVoltage(2);
+			Vcell3 = AFE_ReadCellVoltage(3);
+			Vcell4 = AFE_ReadCellVoltage(4);
+			Vcell16 = AFE_ReadCellVoltage(16);
+			PACK_Current1 = AFE_ReadCurrent();
+			internaldie = AFE_ReadInternaldie();
+			LD_VOLTAGE =AFE_ReadLDVoltage();
+			stack =AFE_ReadStackVoltage();
+			
+			
+			HAL_Delay(1000);
+			#endif
+			
+	}
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 8;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_2;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_2;
+  sConfig.Rank = ADC_REGULAR_RANK_3;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_3;
+  sConfig.Rank = ADC_REGULAR_RANK_4;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Rank = ADC_REGULAR_RANK_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_11;
+  sConfig.Rank = ADC_REGULAR_RANK_6;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_12;
+  sConfig.Rank = ADC_REGULAR_RANK_7;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_13;
+  sConfig.Rank = ADC_REGULAR_RANK_8;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief CRC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CRC_Init(void)
+{
+
+  /* USER CODE BEGIN CRC_Init 0 */
+
+  /* USER CODE END CRC_Init 0 */
+
+  /* USER CODE BEGIN CRC_Init 1 */
+
+  /* USER CODE END CRC_Init 1 */
+  hcrc.Instance = CRC;
+  if (HAL_CRC_Init(&hcrc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CRC_Init 2 */
+
+  /* USER CODE END CRC_Init 2 */
+
+}
+
+/**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.ClockSpeed = 100000;
+  hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_ENABLE;
+  hspi1.Init.CRCPolynomial = 7;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 72;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 36000-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = TEMPSCANTIME;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 36000-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = BQSCANTI;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GREEN_Pin|RED_Pin|BLUE_Pin|DFETOFF_Pin
+                          |shutdown_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : GREEN_Pin RED_Pin BLUE_Pin DFETOFF_Pin
+                           shutdown_Pin */
+  GPIO_InitStruct.Pin = GREEN_Pin|RED_Pin|BLUE_Pin|DFETOFF_Pin
+                          |shutdown_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB1_Pin */
+  GPIO_InitStruct.Pin = PB1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(PB1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SPI_CS_Pin */
+  GPIO_InitStruct.Pin = SPI_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : ALERT_Pin */
+  GPIO_InitStruct.Pin = ALERT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(ALERT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SW4_Pin */
+  GPIO_InitStruct.Pin = SW4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(SW4_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SW3_Pin SW2_Pin SW1_Pin */
+  GPIO_InitStruct.Pin = SW3_Pin|SW2_Pin|SW1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+}
+
+/* USER CODE BEGIN 4 */
+void ERROR_check(void){
+				             double   cell_mean_fast;
+				             double   cell_mean_slow;				
+										 static 	     uint8_t  row;
+				static 	     uint8_t  col;
+				register     uint8_t  counter=0;
+				register     uint8_t  inner_counter=0;
+
+				static 	     uint8_t  row1;
+				static 	     uint8_t  col1;
+	if(flag.FLAGS.BQ_scan)
+				{
+				flag.FLAGS.BQ_scan =0;
+					
+				// write bq reading register
+				if(row==IMEDIATE_BUFFER_SIZE)
+				{
+				row=0;
+				}
+				if(col==MEAN_BUFFER_SIZE)
+				{
+				col=0;
+				}
+
+#if 1
+				// in unit of mv
+					// in unit of mv
+					#if CELL1
+					//cell1
+					CellVoltage[0][row] = AFE_ReadCellVoltage(1);							
+					
+					cell_array[0][col]=CellVoltage[0][row]; 
+					#endif
+				
+					#if CELL2
+					//cell1
+					CellVoltage[1][row] = AFE_ReadCellVoltage(2);							
+					
+					cell_array[1][col]=CellVoltage[1][row]; 
+					#endif
+					#if CELL3
+					//cell1
+					CellVoltage[2][row] = AFE_ReadCellVoltage(3);							
+					
+					cell_array[2][col]=CellVoltage[2][row]; 
+					#endif
+					#if CELL4
+					//cell1
+					CellVoltage[3][row] = AFE_ReadCellVoltage(4);							
+					
+					cell_array[3][col]=CellVoltage[3][row]; 
+					#endif
+					#if CELL5
+					//cell1
+					CellVoltage[4][row] = AFE_ReadCellVoltage(5);							
+					
+					cell_array[4][col]=CellVoltage[4][row]; 
+					#endif
+					#if CELL6
+					//cell1
+					CellVoltage[5][row] = AFE_ReadCellVoltage(6);							
+					
+					cell_array[5][col]=CellVoltage[5][row]; 
+					#endif
+					#if CELL7
+					//cell1
+					CellVoltage[6][row] = AFE_ReadCellVoltage(7);							
+					
+					cell_array[6][col]=CellVoltage[6][row]; 
+					#endif
+					#if CELL8
+					//cell1
+					CellVoltage[7][row] = AFE_ReadCellVoltage(8);							
+					
+					cell_array[7][col]=CellVoltage[7][row]; 
+					#endif
+					#if CELL9
+					//cell1
+					CellVoltage[8][row] = AFE_ReadCellVoltage(9);							
+					
+					cell_array[8][col]=CellVoltage[8][row]; 
+					#endif
+					#if CELL10
+					//cell1
+					CellVoltage[9][row] = AFE_ReadCellVoltage(10);							
+					
+					cell_array[9][col]=CellVoltage[9][row]; 
+					#endif
+					#if CELL11
+					//cell1
+					CellVoltage[10][row] = AFE_ReadCellVoltage(11);							
+					
+					cell_array[10][col]=CellVoltage[10][row]; 
+					#endif					
+
+					
+					#if CELL12
+					//cell1
+					CellVoltage[11][row] = AFE_ReadCellVoltage(12);							
+					
+					cell_array[11][col]=CellVoltage[11][row]; 
+					#endif
+					
+										
+					#if CELL13
+					//cell1
+					CellVoltage[12][row] = AFE_ReadCellVoltage(13);							
+					
+					cell_array[12][col]=CellVoltage[12][row]; 
+					#endif
+				
+					#if CELL14
+				
+					//cell1
+						CellVoltage[13][row] = AFE_ReadCellVoltage(14);							
+						
+						cell_array[13][col]=CellVoltage[13][row]; 
+						#endif
+										
+					#if CELL15
+					//cell1
+					CellVoltage[14][row] = AFE_ReadCellVoltage(15);							
+					
+					cell_array[14][col]=CellVoltage[14][row]; 
+					#endif
+					
+					
+					#if CELL16
+					//cell1
+					CellVoltage[15][row] = AFE_ReadCellVoltage(16);							
+					
+					cell_array[15][col]=CellVoltage[15][row]; 
+					#endif
+	#endif	
+		#if VOLTAGE_ERROR
+			for(counter=0 ; counter<16 ; counter++)
+				{
+				cell_mean_slow =0 ;
+				cell_mean_fast =0;
+					for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_fast =  cell_mean_fast + CellVoltage[counter][inner_counter];
+						}
+					for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_slow =  cell_mean_slow+ cell_array[counter][inner_counter];
+						}
+						
+					cell_mean_slow = (cell_mean_slow / MEAN_BUFFER_SIZE);
+					cell_mean_fast = (cell_mean_fast / IMEDIATE_BUFFER_SIZE);
+							
+					if(cell_mean_fast > MCU_COV_SET_POINT | cell_mean_slow >  MCU_MEAN_COV_SET_POINT)
+					//COV  check
+						{
+						DFET_SET;
+						ALL_FET_OFF();	
+						
+						system_flag.FLAGS.COV=1;
+						state = step1;
+						// ov voltage or under voltage flag set
+						
+						if(cell_mean_fast > E_MCU_COV_SET_POINT)
+						{
+						LED_RED_ON;
+							system_flag.FLAGS.EMERGANCY_COV=1;
+						system_state = emergancy;
+						state 			 = step1;
+						}
+						}						
+					else if(cell_mean_fast<MCU_CUV_SET_POINT  | cell_mean_slow <  MCU_MEAN_CUV_SET_POINT)
+					//CUV check
+						{
+						DFET_SET;
+						ALL_FET_OFF();
+							
+						system_flag.FLAGS.CUV=1;
+
+						state 			 = step1;
+							
+							// ov voltage or under voltage flag set
+						if(cell_mean_fast<E_MCU_CUV_SET_POINT)
+						{
+						LED_RED_ON;
+						system_flag.FLAGS.EMERGANCY_CUV=1;
+						system_state = emergancy;
+						state 			 = step1;
+						}
+						
+						}						
+					}
+					Stack_Voltage[row] = AFE_ReadStackVoltage();
+					Stack_Voltage[col] = Stack_Voltage[row];
+						cell_mean_slow =0 ;
+					for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_slow =  cell_mean_slow + Stack_Voltage[inner_counter];
+						}		
+
+					cell_mean_slow = (cell_mean_slow/ IMEDIATE_BUFFER_SIZE);
+						if(cell_mean_slow > MCU_MAX_STACK_VOLT |  cell_mean_slow< MCU_MIN_STACK_VOLT ){
+							DFET_SET;
+							ALL_FET_OFF();
+							
+							state 			 = step1;
+							}	
+					cell_mean_slow =0 ;
+					for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_slow =  cell_mean_slow + Stack_Voltage[inner_counter];
+						}
+					cell_mean_slow = (cell_mean_slow/ MEAN_BUFFER_SIZE);
+					if(cell_mean_slow > MCU_MEAN_MAX_STACK_VOLT |  cell_mean_slow< MCU_MEAN_MIN_STACK_VOLT ){
+							
+							DFET_SET;
+							
+							ALL_FET_OFF();
+							state 			 = step1;
+							}					
+				#endif
+				col++;
+				row++;
+				
+				}
+			
+	#if ERROR_TEMP	
+		//teperature 
+			if(flag.FLAGS.temputure)
+				{
+					flag.FLAGS.temputure=0;
+					double       cell_mean_fast;
+					double       cell_mean_slow;
+					if(row1 == IMEDIATE_BUFFER_SIZE)
+					{
+					row1 =0;
+					}
+					if(col1 == MEAN_BUFFER_SIZE)
+					{
+					col1 =0;
+					}
+					for(counter=0;counter<8;counter++)
+						{ 	
+							temp[counter][row1] = temputure[counter].ADC_half_data.upper_byte;							
+							temp[counter][col1] =	temp[counter][row1];
+							cell_mean_slow =0 ;
+							cell_mean_fast =0 ;
+							for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+							{
+								cell_mean_fast =  cell_mean_fast + temp[counter][inner_counter];
+							}	
+							for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+							{
+								cell_mean_slow =  cell_mean_slow + temp_array[counter][inner_counter];
+							}	
+							cell_mean_fast = (cell_mean_fast / IMEDIATE_BUFFER_SIZE);
+							cell_mean_slow = (cell_mean_slow / MEAN_BUFFER_SIZE);
+						
+					
+					if(cell_mean_fast>MAX_TEMP_SET_POINT | cell_mean_slow>MEAN_HIGH_TEMP_SET_POINT)
+						{
+							LED_BLUE_ON;	
+							state= step1;
+						}
+					if(cell_mean_fast<MIN_TEMP_SET_POINT | cell_mean_slow<MEAN_LOW_TEMP_SET_POINT)
+						{
+							LED_BLUE_ON;	
+							state = step1;
+						}
+					}
+				row1++;
+				col1++;
+				
+				}
+#endif
+
+
+}
+void REST_handeler(void)
+	{
+		DFET_SET;
+		LED_BLUE_OFF;
+		LED_GREEN_OFF;
+		LED_RED_OFF;
+		AFE_ALL_FETS_OFF();
+		ALL_FET_OFF();
+	}
+void CHARGE_handeler(void)
+	{
+		uint8_t condition1;
+		uint8_t condition2;
+
+		register		uint8_t  cnt;
+		double  voltage;
+		switch(state)
+		{
+			case step1:
+				LED_BLUE_ON;
+				LED_RED_OFF;
+				LED_GREEN_OFF; 
+				system_flag.FLAGS.charge=1;
+				system_flag.FLAGS.decharge=0;
+				system_flag.FLAGS.rest =0;
+				condition1 = RELEASE_check_COV();
+				condition2 = temperature_release();
+				voltage=0;
+				for(cnt=0;cnt<5;cnt++)
+					{ 
+						voltage = voltage +AFE_ReadPackVoltage();
+					}
+				voltage = (voltage/5);
+				DEBUG_PRINT(step1);
+				DEBUG_VALUE_F(voltage);
+				if(((condition1+condition2)>1) & (voltage > CHARGER_MIN_VOLTAGE)&( voltage < CHARGER_MAX_VOLTAGE))
+					{
+						
+						system_flag.FLAGS.COV=0;
+						system_flag.FLAGS.CUV=0;
+						system_flag.FLAGS.OCC=0;
+						system_flag.FLAGS.OCD=0;
+						system_flag.FLAGS.fullcharge=0;
+						system_flag.FLAGS.HIGH_TEMPERATURE=0;
+						system_flag.FLAGS.LOW_TEMPERATURE=0;
+						system_flag.FLAGS.EMERGANCY_COV=0;
+						system_flag.FLAGS.EMERGANCY_CUV=0;
+						DFET_RESET;
+						state = step2;
+					}
+			break;
+			case step2:				
+				AFE_ALL_FETS_ON();
+				ALL_CHARGE_ON();				
+				break;			
+			case step3:
+				PACK_CHECK();
+				voltage =	ERROR_check_charge();	
+				CURRENT_CHARGE(voltage);
+			break;
+			default:
+			system_flag.FLAGS.OUT_OF_STATE_WORK=1;
+			system_state = emergancy;	
+			break;
+		}
+	}
+void DECHARG_handeler(void)
+	{
+		uint8_t condition1;
+		uint8_t condition2;
+		switch(state)
+		{
+			case step1:
+				LED_BLUE_OFF;
+				LED_RED_OFF;
+				LED_GREEN_ON;
+				flag.FLAGS.temputure =1;
+				flag.FLAGS.BQ_scan =1; 
+				system_flag.FLAGS.charge=0;
+				system_flag.FLAGS.decharge=1;
+				system_flag.FLAGS.rest =0;
+				condition1=RELEASE_check_CUV();
+				condition2=temperature_release();
+				if(condition1&condition2)
+					{
+						system_flag.FLAGS.COV=0;
+						system_flag.FLAGS.CUV=0;
+						system_flag.FLAGS.OCC=0;
+						system_flag.FLAGS.OCD=0;
+						system_flag.FLAGS.fullcharge=0;
+						system_flag.FLAGS.HIGH_TEMPERATURE=0;
+						system_flag.FLAGS.LOW_TEMPERATURE=0;
+						system_flag.FLAGS.EMERGANCY_COV=0;
+						system_flag.FLAGS.EMERGANCY_CUV=0;
+						DFET_RESET;
+						state = step2;
+					}
+				break;
+			case step2:
+				AFE_ALL_FETS_ON();
+				ALL_PDSG_ON();
+				HAL_Delay(250);
+				ALL_PDSG_OFF();
+				ALL_DECHARGE_ON();
+				HAL_Delay(10);
+				fet_status = AFE_ReadFETStatus();
+
+				if(fet_status.FLAGS.DSG==1)
+					{
+					state = step3;
+					}
+
+					
+				
+				break;
+			case step3:
+				ERROR_check();		
+				CURRENT_DECHARGE();
+				break;
+			default:
+			system_flag.FLAGS.OUT_OF_STATE_WORK=1;
+			system_state = emergancy;
+			break;
+		}
+	}
+
+	
+		
+void EMERGANCY_handeler(void)
+	{	
+		DFET_SET;
+		LED_RED_ON;
+		//show board goes into the emergany mode
+		system_flag.FLAGS.EMERGANCY_WAS_ACTIVATE =1 ;
+		fualt_status= AFE_ReadSafetyStatus();
+		AT24_Write_8(5,fualt_status.FULT);
+		AT24_Write_32(0,system_flag.FLAG);
+		
+		while(1)
+			{
+				uint8_t str[40];
+				if(HAL_GPIO_ReadPin(PB1_GPIO_Port,PB1_Pin)==0)
+				{
+					break;
+				}
+				
+				else if(usart_PC_command =='a')
+				{
+					break;
+				}
+				sprintf((char *)str,"EMERGANY WAS DETECTED");
+				HAL_UART_Transmit(&huart1,str,strlen((char *)str),100);
+				
+				HAL_Delay(1000);
+				
+			}
+	
+	system_state = rest;
+	state = step1;
+	}	
+	
+	
+	
+void SET_INIT(void)
+{
+	
+	register     uint8_t  counter=0;
+	register     uint8_t  inner_counter=0;
+		for(counter=0; counter < IMEDIATE_BUFFER_SIZE ; counter++)
+			{
+				Stack_Voltage[counter] = NORMAL_BATTERY_STACK ;
+				for(inner_counter=0 ; inner_counter<16 ;inner_counter++){
+				CellVoltage [inner_counter][counter] = NORMAL_BATTERY_VOLTAGE ;
+				}		
+			}
+
+		for(counter=0; counter < MEAN_BUFFER_SIZE ; counter++){
+				Stack_Voltage_array[counter]= NORMAL_BATTERY_STACK ;
+						for(inner_counter=0 ; inner_counter<16 ;inner_counter++){
+							cell_array[inner_counter][counter]= NORMAL_BATTERY_VOLTAGE ;
+		}		
+	}
+
+
+	for(counter=0; counter <8  ; counter++)
+			{
+				for(inner_counter=0 ; inner_counter<IMEDIATE_BUFFER_SIZE ;inner_counter++){
+				 temp[counter][inner_counter] = NORMAL_TEMP ;
+				}		
+			
+				for(inner_counter=0 ; inner_counter<MEAN_BUFFER_SIZE ;inner_counter++){
+				 temp_array[counter][inner_counter] = NORMAL_TEMP ;
+				}
+			
+			
+			}
+
+
+
+}
+	
+
+
+void EMERGANCY_CHECK(void)
+	{
+		
+		AT24_Read_32(0,&system_flag.FLAG);
+		uint8_t str[40];
+
+		if(system_flag.FLAGS.EMERGANCY_WAS_ACTIVATE)
+		{
+			LED_RED_ON;
+			while(1)
+				{
+					if(HAL_GPIO_ReadPin(PB1_GPIO_Port,PB1_Pin)==0)
+					{
+						break;
+					}
+					
+					else if(usart_PC_command =='a')
+					{
+						break;
+					}
+					sprintf((char *)str,"EMERGANY WAS DETECTED");
+					HAL_UART_Transmit(&huart1,str,strlen((char *)str),100);
+				}
+		system_flag.FLAGS.EMERGANCY_WAS_ACTIVATE =0 ;
+
+		AT24_Write_32(0,system_flag.FLAG);	
+		}
+	LED_RED_OFF;
+	}
+
+//	
+
+		
+		
+		
+		
+void delayUS(uint32_t us){   // Sets the delay in microseconds.
+	//uint8_t tim = 0;
+	__HAL_TIM_SET_COUNTER(&htim1,0);  // set the counter value a 0
+	while (__HAL_TIM_GET_COUNTER(&htim1) < us);
+}
+
+unsigned char Checksum(unsigned char *ptr, unsigned char len)
+	// Calculates the checksum when writing to a RAM register. The checksum is the inverse of the sum of the bytes.
+{
+	unsigned char i;
+	unsigned char checksum = 0;
+	
+	for(i=0; i<len; i++)
+		checksum += ptr[i];
+
+	checksum = 0xff & ~checksum;
+
+	return(checksum);
+}
+
+void SPI_WriteReg(uint8_t reg_addr, uint8_t *reg_data, uint8_t count) {
+	// SPI Write. Includes retries in case HFO has not started or if wait time is needed. See BQ76952 Software Development Guide for examples
+  uint8_t addr; 
+  unsigned int i;
+	unsigned int match;
+	unsigned int retries = 10;
+
+	match = 0;
+  addr = 0x80 | reg_addr;
+    
+  for(i=0; i<count; i++) {
+		TX_Buffer[0] = addr;
+		TX_Buffer[1] = reg_data[i];
+		
+		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET);
+		HAL_SPI_TransmitReceive(&hspi1, TX_Buffer, rxdata, 2, 1);
+		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET); 
+        
+		while ((match == 0) & (retries > 0)) {
+		
+			delayUS(500);
+			HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET);
+			HAL_SPI_TransmitReceive(&hspi1, TX_Buffer, rxdata, 2, 1);
+			HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET); 
+			if ((rxdata[0] == addr) & (rxdata[1] == reg_data[i]))
+				match = 1;
+			retries --;
+		}    
+    match = 0;
+    addr += 1;
+		delayUS(500);
+  }
+}
+
+
+
+void SPI_ReadReg(uint8_t reg_addr, uint8_t *reg_data, uint8_t count) {
+	// SPI Read. Includes retries in case HFO has not started or if wait time is needed. See BQ76952 Software Development Guide for examples
+  uint8_t addr; 
+  unsigned int i;
+	unsigned int match;
+	unsigned int retries = 10;
+    
+	match = 0;
+  addr = reg_addr;
+    
+  for(i=0; i<count; i++) {
+		TX_Buffer[0] = addr;
+		TX_Buffer[1] = 0xFF;
+		
+		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET); //0
+		HAL_SPI_TransmitReceive(&hspi1, TX_Buffer, rxdata, 2, 1);
+		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET); //1
+        
+		while ((match == 0) & (retries > 0)) {
+			delayUS(500);
+			HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET); //0
+			HAL_SPI_TransmitReceive(&hspi1, TX_Buffer, rxdata, 2, 1);
+			HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET); //1
+			if (rxdata[0] == addr) {
+				match = 1;
+				reg_data[i] = rxdata[1];
+			}
+			retries --;
+		}    
+    match = 0;
+    addr += 1;
+		delayUS(500);
+  }
+}
+
+void AFE_Reset(void){
+	// Reset command. Resets all registers to default values or the values programmed in OTP.
+	TX_2Byte[0] = 0x12; TX_2Byte[1] = 0x00;
+	SPI_WriteReg(0x3E,TX_2Byte,2);
+}
+
+
+void AFE_Init(void) {
+
+
+	KEYPAD_SCAN_t  cell1;
+	KEYPAD_SCAN_t  cell2;
+	cell1.data_BIT.SW1 = CELL1;
+	cell1.data_BIT.SW2 = CELL2;
+	cell1.data_BIT.SW3 = CELL3;
+	cell1.data_BIT.SW4 = CELL4;
+	cell1.data_BIT.SW5 = CELL5;
+	cell1.data_BIT.SW6 = CELL6;
+	cell1.data_BIT.SW7 = CELL7;
+	cell1.data_BIT.SW8 = CELL8;
+	cell2.data_BIT.SW1 = CELL9;
+	cell2.data_BIT.SW2 = CELL10;
+	cell2.data_BIT.SW3 = CELL11;
+	cell2.data_BIT.SW4 = CELL12;
+	cell2.data_BIT.SW5 = CELL13;
+	cell2.data_BIT.SW6 = CELL14;
+	cell2.data_BIT.SW7 = CELL15;
+	cell2.data_BIT.SW8 = CELL16;
+	
+	
+	do{	
+	// Enter CONFIGUPDATE mode
+		
+		AFE_Reset();
+		delayUS(700);
+		AFE_SLEEP_DISABLE();
+		delayUS(700);
+		TX_2Byte[0] = 0x90; TX_2Byte[1] = 0x00;
+		SPI_WriteReg(0x3E,TX_2Byte,2);
+		LED_RED_ON;
+		HAL_Delay(500);
+		barraty_status = AFE_BatteryStatus();
+		LED_GREEN_ON;
+		HAL_Delay(500);
+		
+			}while(barraty_status.FLAGS.CFGUPDATE==0);
+
+	
+	
+	do{
+																										// my code //BC
+		// 'Power Config'																sample code		//82
+		TX_4Byte[0] = 0x34; TX_4Byte[1] = 0x92; TX_4Byte[2] = 0xBC; TX_4Byte[3] = 0x2D;
+		SPI_WriteReg(0x3E, TX_4Byte, 4);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;  // Checksum and Length
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+SPI_ReadReg(0x3E, RX_2Byte, 2);			
+	}while(RX_2Byte[1] == 0xFF);
+
+		/////      ||||||||||||||||||||||||
+		////			  vvvvvvvvvvvvvvvvvvvvvvvv
+//////////////////////////////////check two diffrent value recomnded by datasheet one said it sould be one 
+///and the other said it should be zero section 13.3.2.19
+do{	
+	// 'VCell Mode'
+		TX_4Byte[0] = 0x04; TX_4Byte[1] = 0x93; TX_4Byte[2] =cell1.data; TX_4Byte[3] = cell2.data;/*0x80;*/ /*0x9F;*/
+		SPI_WriteReg(0x3E, TX_4Byte, 4);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;  // Checksum and Length
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+SPI_ReadReg(0x3E, RX_2Byte, 2);		
+}while(RX_2Byte[1] == 0xFF);
+/////      /\/\/\/\/\/\/\/\/\/\/\/\
+/////      ||||||||||||||||||||||||
+
+
+
+
+//*****************************************************temperature
+		do{
+	// Set TS1 to measure Cell Temperature - 0x92FD = 0x07   (See TRM Section 13.3.2.12)
+	TX_3Byte[0] = 0xFD; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x00;
+  SPI_WriteReg(0x3E, TX_3Byte, 3); 
+	delayUS(1000);
+	TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+  SPI_WriteReg(0x60, TX_2Byte, 2);	
+	delayUS(2000);
+	SPI_ReadReg(0x3E, RX_2Byte, 2);			
+	}while(RX_2Byte[1] == 0xFF);
+
+	
+	
+		do{
+	// Set TS3 to measure FET Temperature - 0x92FF = 0x0F   (See TRM Section 13.3.2.14)
+	TX_3Byte[0] = 0xFF; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x00;
+  SPI_WriteReg(0x3E, TX_3Byte, 3); 
+	delayUS(1000);
+	TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+  SPI_WriteReg(0x60, TX_2Byte, 2);	
+	delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);			
+	}while(RX_2Byte[1] == 0xFF);
+	
+	do{
+		// Set DCHG to measure FET Temperature - 0x92FF = 0x0F   (See TRM Section 13.3.2.14)
+	TX_3Byte[0] = 0x01; TX_3Byte[1] = 0x93; TX_3Byte[2] = 0x00;
+  SPI_WriteReg(0x3E, TX_3Byte, 3); 
+	delayUS(1000);
+	TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+  SPI_WriteReg(0x60, TX_2Byte, 2);	
+	delayUS(2000);
+			SPI_ReadReg(0x3E, RX_2Byte, 2);			
+	}while(RX_2Byte[1] == 0xFF);
+	
+	do{
+		// Set DDSG to measure FET Temperature - 0x92FF = 0x0F   (See TRM Section 13.3.2.14)
+	TX_3Byte[0] = 0x02; TX_3Byte[1] = 0x93; TX_3Byte[2] = 0x00;
+  SPI_WriteReg(0x3E, TX_3Byte, 3); 
+	delayUS(1000);
+	TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+  SPI_WriteReg(0x60, TX_2Byte, 2);	
+	delayUS(2000);
+			SPI_ReadReg(0x3E, RX_2Byte, 2);			
+	}while(RX_2Byte[1] == 0xFF);
+	
+	//*********************************************TEMPERATURE
+
+
+
+	/////      ||||||||||||||||||||||||
+		////			  vvvvvvvvvvvvvvvvvvvvvvvv
+//do{
+//// i don't khow why it's enable i think it's reading register not writing
+//		// 'Default Alarm Mask'
+//		TX_4Byte[0] = 0x6D; TX_4Byte[1] = 0x92; TX_4Byte[2] = 0x82; TX_4Byte[3] = 0xF8;
+//		SPI_WriteReg(0x3E, TX_4Byte, 4);
+//		delayUS(2000);
+//		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;  // Checksum and Length
+//		SPI_WriteReg(0x60, TX_2Byte, 2);
+//		delayUS(2000);
+//SPI_ReadReg(0x3E, RX_2Byte, 2);		
+//}while(RX_2Byte[1] == 0xFF);
+	/////      /\/\/\/\/\/\/\/\/\/\/\/\
+/////      ||||||||||||||||||||||||
+	do{
+		// Enable protections in 'Enabled Protections A
+		// only tier two protection are disable if you want to enable protection tier 2 use 0xFC
+		TX_3Byte[0] = 0x61; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0xFC;  //0xFC
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+	}while(RX_2Byte[1] == 0xFF);
+		
+	do{
+		// protection B are for temputure so in this part i disable all of them
+
+		TX_3Byte[0] = 0x62; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x40;  //0xF7
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);			
+	}while(RX_2Byte[1] == 0xFF);
+		//page 142 idont khow why it's disable 
+		// in original code this part was deavtivated 
+	#if 1
+	// DFET OFF set for both off with active low 
+		TX_3Byte[0] = 0xFB; TX_3Byte[1] = 0x92; TX_3Byte[2] =0x42; ///0xC2;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+	#endif
+	
+		do{
+	// alert pin enable with active high from reg1 voltage since 
+// it drive from reg 1 it might be needed to program reg18 is an internal voltage	that drive every FETS
+		// Set up Alert Pin - 0x92FC = 0x0A  - See TRM Section 13.3.2.11, Table 13-8
+		// This configures the Alert pin to drive high (REG18 voltage) when enabled.
+		// Other options available include active-low, drive HiZ, drive using REG18 (1.8V), weak internal pull-up and pull-down
+		TX_3Byte[0] = 0xFC; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x2A; //2A //2A for reg 1 and 0A for reg 18 
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+				}while(RX_2Byte[1] == 0xFF);
+		
+		////////balancing configuration
+		// important hint i disable blancig cell while charging
+		
+		// Set up Cell Balancing Configuration - 0x9335 = 0x03   -  Automated balancing while in Relax or Charge modes
+		// See TRM Section 13.3.11. Chapter 10 of TRM describes Cell Balancing in detail
+		// Also see "Cell Balancing with BQ76952, BQ76942 Battery Monitors" document on ti.com
+				do{
+		TX_3Byte[0] = 0x35; TX_3Byte[1] = 0x93; TX_3Byte[2] =0x07; //0x0B;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+		}while(RX_2Byte[1] == 0xFF);
+		//// this following parameter should be choose
+		/// problem
+		do{
+		U16_TO_U8_t min_cell_charge;
+		min_cell_charge.data =	CHARGE_VOLTAGE;
+			
+			// Cell Balance Min Cell V (Charge) = defult 3.2v
+		TX_4Byte[0] = 0x3B; TX_4Byte[1] = 0x93; TX_4Byte[2] = min_cell_charge.data_byte.lower_byte; TX_4Byte[3] = min_cell_charge.data_byte.upper_byte;
+		SPI_WriteReg(0x3E, TX_4Byte, 4);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;  // Checksum and Length
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);			
+		}while(RX_2Byte[1] == 0xFF);
+	#if 1	
+		// Cell Balance Min Delta (Charge) = defult 40mv
+		// it should be calulate
+		// note this is one bye chek sum and other thing should be change
+		TX_3Byte[0] = 0x3D; TX_3Byte[1] = 0x93; TX_3Byte[2] = BQ_MIN_DELTA;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(1000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(1000);
+
+		//Cell Balance Stop Delta (Charge) = defult 20 mv
+				// note this is one bye chek sum and other thing should be change
+		TX_3Byte[0] = 0x3E; TX_3Byte[1] = 0x93; TX_3Byte[2] = BQ_MIN_STOP;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(1000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(1000);
+		
+	#endif
+		
+		do{
+		U16_TO_U8_t min_cell_relax;
+		min_cell_relax.data =	REST_VOLTAGE;	
+			//Cell Balance Min Cell V (Relax) = 3.2v defult
+		// note this is one bye chek sum and other thing should be change
+		TX_4Byte[0] = 0x3F; TX_4Byte[1] = 0x93; TX_4Byte[2] = min_cell_relax.data_byte.lower_byte; TX_4Byte[3] = min_cell_relax.data_byte.upper_byte;
+		SPI_WriteReg(0x3E, TX_4Byte, 4);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);	
+		}while(RX_2Byte[1] == 0xFF);
+		#if 1	
+		// Cell Balance Min Delta (relax) = defult 40mv
+		// it should be calulate
+		TX_3Byte[0] = 0x41; TX_3Byte[1] = 0x93; TX_3Byte[2] = BQ_MIN_DELTA;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+
+
+		//Cell Balance Stop Delta (relax) = defult 20 mv
+		TX_3Byte[0] = 0x42; TX_3Byte[1] = 0x93; TX_3Byte[2] = BQ_MIN_STOP;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+	
+		
+		
+				//balance interval = 1
+		TX_3Byte[0] = 0x39; TX_3Byte[1] = 0x93; TX_3Byte[2] = BALNCE_INTERVAL;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		
+		
+		
+		//balance MAX cell = 1
+		TX_3Byte[0] = 0x3A; TX_3Byte[1] = 0x93; TX_3Byte[2] = MAX_CELL_BALANCE;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		
+		
+		
+	#endif	
+
+		do{
+		//charge protection A
+		TX_3Byte[0] = 0x65; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x98;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+		}while(RX_2Byte[1] == 0xFF);
+		//charge protection B is for temputure if we want to use it
+		// we should enable it and alse set a temputure 
+		
+		//charge protection C is for latch and time out by defult it's deis able 
+		// if we wantto use it we sholut wet a thait variable and also 
+		// set charge protection C
+
+
+do{
+		//Discharg protection A
+		TX_3Byte[0] = 0x69; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0xE4;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+SPI_ReadReg(0x3E, RX_2Byte, 2);		
+}while(RX_2Byte[1] == 0xFF);
+		//decharge protection B is for temputure if we want to use it 0x926B
+		// we should enable it and alse set a temputure 
+		
+		//decharge protection C is for latch and time out by defult it's deis able  0x9273
+		// if we wantto use it we sholut wet a thait variable and also 
+		// set charge protection C
+		
+
+/// COV max set for 4.2 in 100 ms and hysterzis for 
+
+
+		// Set up COV (over-voltage) Threshold - 0x9278 = 0x55 (4301 mV)
+		// i set it for 4.1998V
+		do{
+		// 4d == 3910
+		// COV Threshold is this value multiplied by 50.6mV  See TRM section 13.6.2
+		TX_3Byte[0] = 0x78; TX_3Byte[1] = 0x92; TX_3Byte[2] =BQ_COV_SET_POINT; //0x53;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+		}while(RX_2Byte[1] == 0xFF);
+		// Set up COV hystersis
+		// it's defult for 100mv choose what kind of number we want
+	#if 1
+		// COV Threshold is this value multiplied by 50.6mV  See TRM section 13.6.2
+		TX_3Byte[0] = 0x7C; TX_3Byte[1] = 0x92; TX_3Byte[2] = BQ_RECOVERY_COV;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+	#endif
+	do{
+		
+		U16_TO_U8_t cov_thereshold;
+		cov_thereshold.data = (BQ_COV_DELAY-2);
+		// set delay for vmax 
+		// i set it for 100 ms ==> 100ms = 3.3ms(2+ number)
+		TX_4Byte[0] = 0x79; TX_4Byte[1] = 0x92; TX_4Byte[2] = cov_thereshold.data_byte.lower_byte; TX_4Byte[3] = cov_thereshold.data_byte.upper_byte;
+		SPI_WriteReg(0x3E, TX_4Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_4Byte, 3); TX_2Byte[1] = 0x06;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);		
+	}while(RX_2Byte[1] == 0xFF);
+
+		
+// CUV max set for 3 in 100 ms and hysterzis for 
+
+		// Set up CUV (under-voltage) Threshold - 0x9275 = 0x3C (3030 mV)
+		// i set it for 3.0360V
+		// CUV Threshold is this value multiplied by 50.6mV  See TRM section 13.6.2
+		do{
+		TX_3Byte[0] = 0x75; TX_3Byte[1] = 0x92; TX_3Byte[2] = BQ_CUV_SET_POINT;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+	
+		}while(RX_2Byte[1] == 0xFF);
+
+
+	#if 1
+		// CUV Threshold is this value multiplied by 50.0mV  See TRM section 13.6.2
+// the minimum value is 2 so it start working if it rise from 3.1 v
+do{
+		TX_3Byte[0] = 0x7B; TX_3Byte[1] = 0x92; TX_3Byte[2] = BQ_RECOVERY_CUV;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);	
+}while(RX_2Byte[1] == 0xFF);
+
+
+// set delay for vmax 
+		// i set it for 100 ms ==> 100ms = 3.3ms(2+ number)  = 99ms
+		do{
+		U16_TO_U8_t cuv_thereshold;
+		cuv_thereshold.data = (BQ_CUV_DELAY-2);
+		
+		TX_4Byte[0] = 0x76; TX_4Byte[1] = 0x92; TX_4Byte[2] = cuv_thereshold.data_byte.lower_byte; TX_4Byte[3] = cuv_thereshold.data_byte.upper_byte;
+		SPI_WriteReg(0x3E, TX_4Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_4Byte, 3); TX_2Byte[1] = 0x06;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);	
+		}while(RX_2Byte[1] == 0xFF);
+	#endif
+		
+		
+//SCD
+		// Set up SCD Threshold - 0x9286 = 0x02 (40mv mV = 40A across 1mOhm sense resistor)
+		// See TRM section 13.6.7    0x02=40mV
+do{
+			TX_3Byte[0] = 0x86; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x02;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);		
+		}while(RX_2Byte[1] == 0xFF);
+		// Set up SCD Delay - 0x9287 = 0x03 (30 us)    See TRM section 13.6.7
+		// Units of 15us    0x9287 = 0x07 = > 6*15 90us
+do{
+				TX_3Byte[0] = 0x87; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x07;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+	SPI_ReadReg(0x3E, RX_2Byte, 2);	
+		}while(RX_2Byte[1] == 0xFF);
+		// Set up SCDL Latch Limit to 1 to set SCD recovery only with load removal 0x9295 = 0x01
+		// If this is not set, then SCD will recover based on time (SCD Recovery Time parameter).
+		// See TRM section 13.6.11.1
+do{
+		TX_3Byte[0] = 0x95; TX_3Byte[1] = 0x92; TX_3Byte[2] = 0x01;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+SPI_ReadReg(0x3E, RX_2Byte, 2);		
+}while(RX_2Byte[1] == 0xFF);
+
+
+//OCD
+		
+		// it has two diffrent ocd i want to set one of them to 22A for 425ms
+		// and the other one for 26 immediatly 
+		
+			// Set up OCD (over-current) Threshold - 0x9282 = 0x0B (22mV)== >1mohm => 22A 
+			do{
+			//  See TRM section 13.6.5
+			TX_3Byte[0] = 0x82; TX_3Byte[1] = 0x92; TX_3Byte[2] = BQ_OCD1_SET_POINT;
+			SPI_WriteReg(0x3E, TX_3Byte, 3);
+			delayUS(2000);
+			TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+			SPI_WriteReg(0x60, TX_2Byte, 2);
+			delayUS(2000);
+			SPI_ReadReg(0x3E, RX_2Byte, 2);			
+			}while(RX_2Byte[1] == 0xFF);
+			//3.3 + numcer that set
+			// set delay for OCD1 425ms => 0x9283 = 7E => 422.4ms
+			do{
+					TX_3Byte[0] = 0x83; TX_3Byte[1] = 0x92; TX_3Byte[2] = (BQ_OCD1_DELAY-2);
+			SPI_WriteReg(0x3E, TX_3Byte, 3);
+			delayUS(2000);
+			TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+			SPI_WriteReg(0x60, TX_2Byte, 2);
+			delayUS(2000);	
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+		}while(RX_2Byte[1] == 0xFF);
+
+do{
+			// set OCD2 for 26 A immediatly
+			// for 1 mohm ressistor 
+			// 13.6.6.1
+			// 26mv = 2mv* 0x0D  0X9284=0x0D
+			// note tier 2 protection should be enable
+			TX_3Byte[0] = 0x84; TX_3Byte[1] = 0x92; TX_3Byte[2] = BQ_OCD2_SET_POINT;
+			SPI_WriteReg(0x3E, TX_3Byte, 3);
+			delayUS(2000);
+			TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+			SPI_WriteReg(0x60, TX_2Byte, 2);
+			delayUS(2000);
+	SPI_ReadReg(0x3E, RX_2Byte, 2);
+			}while(RX_2Byte[1] == 0xFF);
+			// the minimum value that it get is equal to 1 so we have 10 ms for 26A decharg respond
+do{
+			TX_3Byte[0] = 0x85; TX_3Byte[1] = 0x92; TX_3Byte[2] = (BQ_OCD2_DELAY-2);
+			SPI_WriteReg(0x3E, TX_3Byte, 3);
+			delayUS(2000);
+			TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+			SPI_WriteReg(0x60, TX_2Byte, 2);
+			delayUS(2000);
+SPI_ReadReg(0x3E, RX_2Byte, 2);
+		}while(RX_2Byte[1] == 0xFF);
+//OCC	
+	do{
+			// Set up OCC (over-current) Threshold - 0x9280 = 0x0B (12mV)== >1mohm => 12A 
+			// See TRM section 13.6.4
+			TX_3Byte[0] = 0x80; TX_3Byte[1] = 0x92; TX_3Byte[2] = BQ_OCC_SET_POINT;
+			SPI_WriteReg(0x3E, TX_3Byte, 3);
+			delayUS(2000);
+			TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+			SPI_WriteReg(0x60, TX_2Byte, 2);
+			delayUS(2000);
+			SPI_ReadReg(0x3E, RX_2Byte, 2);
+					}while(RX_2Byte[1] == 0xFF);
+	do{
+			// 3.3 +2  * number
+			// set delay for OCC 425ms => 0x9281 = 7E => 422.4ms
+			TX_3Byte[0] = 0x81; TX_3Byte[1] = 0x92; TX_3Byte[2] = (BQ_OCC_DELAY-2);
+			SPI_WriteReg(0x3E, TX_3Byte, 3);
+			delayUS(2000);
+			TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+			SPI_WriteReg(0x60, TX_2Byte, 2);
+			delayUS(2000);	
+	SPI_ReadReg(0x3E, RX_2Byte, 2);	
+	}while(RX_2Byte[1] == 0xFF);
+	
+
+do{
+// MFG INIT
+		//0x01 doesnt chenck permanent failiur
+				// Maufcturing status init
+		TX_4Byte[0] = 0x43; TX_4Byte[1] = 0x93; TX_4Byte[2] = 0x10 /* 0x50   */; TX_4Byte[3] = 0x00;
+		SPI_WriteReg(0x3E, TX_4Byte, 4);
+		delayUS(2000);
+		// HAL_Delay(1);
+		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;  // Checksum and Length
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+		SPI_ReadReg(0x3E, RX_2Byte, 2);
+		}while(RX_2Byte[1] == 0xFF);
+		
+	do{	
+		//Fet options
+		// the 5 bit in page 168 was't clear check it later
+		TX_3Byte[0] = 0x08; TX_3Byte[1] = 0x93; TX_3Byte[2] = 0x1D;
+		SPI_WriteReg(0x3E, TX_3Byte, 3);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_3Byte, 3); TX_2Byte[1] = 0x05;
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+	SPI_ReadReg(0x3E, RX_2Byte, 2);	
+	}while(RX_2Byte[1] == 0xFF);
+	
+		do{
+		//it's for PF I disable all of them
+		//Protection config
+		TX_4Byte[0] = 0x5F; TX_4Byte[1] = 0x92; TX_4Byte[2] = 0x00; TX_4Byte[3] = 0x00;
+		SPI_WriteReg(0x3E, TX_4Byte, 4);
+		delayUS(2000);
+		// HAL_Delay(1);
+		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;  // Checksum and Length
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+SPI_ReadReg(0x3E, RX_2Byte, 2);
+		}while(RX_2Byte[1] == 0xFF);
+
+		
+	
+		/////       ||||||||||||||||||||||||
+		////			  vvvvvvvvvvvvvvvvvvvvvvvv
+		//// this following parameter should be choose
+		/// problem
+	do{	
+		//
+		//Body diode
+		TX_4Byte[0] = 0x73; TX_4Byte[1] = 0x92; TX_4Byte[2] = 0xDC; TX_4Byte[3] = 0x05;
+		SPI_WriteReg(0x3E, TX_4Byte, 4);
+		delayUS(2000);
+		// HAL_Delay(1);
+		TX_2Byte[0] = Checksum(TX_4Byte, 4); TX_2Byte[1] = 0x06;  // Checksum and Length
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+	SPI_ReadReg(0x3E, RX_2Byte, 2);	
+	}while(RX_2Byte[1] == 0xFF);
+
+do{
+		//CC Gain
+		TX_6Byte[0] = 0xA8; TX_6Byte[1] = 0x91; TX_6Byte[2] = 0xF2; TX_6Byte[3] = 0x41; TX_6Byte[4] = 0xEF; TX_6Byte[5] = 0x40;
+		SPI_WriteReg(0x3E, TX_6Byte, 6);
+		delayUS(2000);
+		TX_2Byte[0] = Checksum(TX_6Byte, 6); TX_2Byte[1] = 0x08;  // Checksum and Length
+		SPI_WriteReg(0x60, TX_2Byte, 2);
+		delayUS(2000);
+SPI_ReadReg(0x3E, RX_2Byte, 2);			
+}while(RX_2Byte[1] == 0xFF);	
+		/////      /\/\/\/\/\/\/\/\/\/\/\/\
+		/////      ||||||||||||||||||||||||
+
+
+
+do{
+
+
+// Exit CONFIGUPDATE mode  - Subcommand 0x0092
+		TX_2Byte[0] = 0x92; TX_2Byte[1] = 0x00;
+		SPI_WriteReg(0x3E,TX_2Byte,2);
+		delayUS(2000);
+
+			LED_GREEN_ON;
+		delayUS(2000);
+		
+	
+		
+		barraty_status = AFE_BatteryStatus();
+	LED_GREEN_OFF;
+		delayUS(2000);
+	barraty_status = AFE_BatteryStatus();
+}while(barraty_status.FLAGS.CFGUPDATE);
+
+
+}
+	
+
+
+// minimum channel equal to 1 
+// maximum channel equal to 
+uint16_t AFE_ReadCellVoltage(uint8_t channel) {
+	SPI_ReadReg(channel*0x02+0x12, RX_2Byte, 2);
+	return (RX_2Byte[1]*256 + RX_2Byte[0]);     // cell voltage is reported in mV
+}
+
+
+
+uint16_t AFE_ReadStackVoltage(void) {
+	SPI_ReadReg(0x34, RX_2Byte, 2);
+	return 10 * (RX_2Byte[1]*256 + RX_2Byte[0]);  // voltage is reported in 0.01V units
+}
+
+
+
+
+uint16_t AFE_ReadCurrent(void) {
+	SPI_ReadReg(0x3A, RX_2Byte, 2);
+	return (RX_2Byte[1]*256 + RX_2Byte[0]);  // current is reported in mA
+}
+
+
+
+uint16_t AFE_ReadPackVoltage() {
+	SPI_ReadReg(0x36, RX_2Byte, 2);
+	return 10 * (RX_2Byte[1]*256 + RX_2Byte[0]);  // voltage is reported in 0.01V units
+}
+
+
+
+
+
+/////////////////////////////////////////////////////////////////
+///////////////////////////BQ FUNCTION START/////////////////////
+/////////////////////////////////////////////////////////////////
+
+
+
+//  ********************************* FET Control Commands  ***************************************
+
+
+void AFE_ALL_FETS_ON(void) {
+	// All all FETs to be enabled with command 0x0096  See TRM Table 5-8
+	TX_2Byte[0] = 0x96; TX_2Byte[1] = 0x00;
+	SPI_WriteReg(0x3E,TX_2Byte,2);
+}
+
+
+void AFE_ALL_FETS_OFF() {
+	// Disable all FETs with command 0x0095  See TRM Table 5-8
+	TX_2Byte[0] = 0x95; TX_2Byte[1] = 0x00;
+SPI_WriteReg(0x3E,TX_2Byte,2);
+}
+
+
+void AFE_CHG_ON() {
+	// Disable all FETs with command 0x0095  See TRM Table 5-8
+TX_2Byte[0] = 0x1F; TX_2Byte[1] = 0x00;
+SPI_WriteReg(0x3E,TX_2Byte,2);
+}
+void AFE_DSG_ON() {
+	// Disable all FETs with command 0x0095  See TRM Table 5-8
+	TX_2Byte[0] = 0x20; TX_2Byte[1] = 0x00;
+SPI_WriteReg(0x3E,TX_2Byte,2);
+}
+
+void ALL_PDSG_ON() {
+	// Disable all FETs with command 0x0095  See TRM Table 5-8
+
+fet_status = AFE_ReadFETStatus();
+	if(!fet_status.FLAGS.PDSG)
+	{
+	
+		TX_2Byte[0] = 0x1C; TX_2Byte[1] = 0x00;
+SPI_WriteReg(0x3E,TX_2Byte,2);
+	
+	}
+
+
+}
+
+void ALL_PDSG_OFF() {
+	// Disable all FETs with command 0x0095  See TRM Table 5-8
+
+fet_status = AFE_ReadFETStatus();
+	if(fet_status.FLAGS.PDSG)
+	{
+	
+		TX_2Byte[0] = 0x1C; TX_2Byte[1] = 0x00;
+		SPI_WriteReg(0x3E,TX_2Byte,2);
+	
+	}
+
+
+}
+
+
+
+FET_STATUS_t AFE_ReadFETStatus() { 
+	// Read FET Status to see which FETs are enabled
+	SPI_ReadReg(0x7F, RX_2Byte, 2);
+  
+	FET_STATUS_t FET_Status;  // FET Status register contents See TRM Section 12.2.20  - Shows states of FETs
+
+	FET_Status.FET_STATUS = (RX_2Byte[1]*256 + RX_2Byte[0]);
+	return FET_Status;
+
+}
+
+
+
+// ********************************* End of FET Control Commands *********************************
+
+
+// ********************************* AFE Cell Balancing Commands   *****************************************
+
+
+
+
+
+// ********************************* End of AFE Cell Balancing Commands   *****************************************
+
+
+// ********************************* AFE Power Commands   *****************************************
+
+// ********************************* End of AFE Power Commands   *****************************************
+
+
+// ********************************* AFE Status and Fault Commands   *****************************************
+
+
+
+//***************************USE FULL*****************************//
+
+uint16_t AFE_ReadAlarmStatus()  //page 104
+	{ 
+		// Read this register to find out why the Alert pin was asserted. See section 6.6 of the TRM for full description.
+		SPI_ReadReg(0x62, RX_2Byte, 2);
+		return (RX_2Byte[1]*256 + RX_2Byte[0]);
+	}
+
+
+//***************************USE FULL*****************************//
+BQ_FULT_STATUS_t AFE_ReadSafetyStatus() { 
+	// Read Safety Status A/B/C and find which bits are set
+	// This shows which primary protections have been triggered
+	BQ_FULT_STATUS_t SafetyStatusA;  // Safety Status Register A
+	SPI_ReadReg(0x03, RX_2Byte, 2);
+	SafetyStatusA.FULT = (RX_2Byte[1]*256 + RX_2Byte[0]);
+	return SafetyStatusA;
+	
+	//					UV_Fault = 0x4 & RX_2Byte[0];
+//					OV_Fault = 0x8 & RX_2Byte[0];
+//					SCD_Fault = 0x8 & RX_2Byte[1];
+//					OCD_Fault = 0x2 & RX_2Byte[1];
+}
+
+//***************************USE FULL*****************************//
+
+
+
+
+void AFE_FET_ENABLE() {
+	// Toggles the FET_EN bit in the Manufacturing Status register. So this command can be used to enable or disable the FETs. 
+	TX_2Byte[0] = 0x22; TX_2Byte[1] = 0x00;
+	SPI_WriteReg(0x3E,TX_2Byte,2);
+}
+
+void AFE_SLEEP_DISABLE() { // SLEEP_DISABLE 0x009A
+	// Takes the device out of sleep mode. See TRM section 7.3
+	TX_2Byte[0] = 0x9A; TX_2Byte[1] = 0x00;
+	SPI_WriteReg(0x3E,TX_2Byte,2);
+}
+	void BQ_FOUNDER(void)
+	//check that device is on the bus 
+		{
+				uint16_t stack_voltage;
+				uint8_t  counter=0;
+				uint8_t  str[40];
+				uint8_t  try_count=0;	
+				
+			
+			while(counter<6)
+			{
+				stack_voltage   = AFE_ReadStackVoltage();
+
+				
+				//we can also check under voltage and others	
+				if(try_count > 5)
+					
+				{
+							LED_RED_ON;
+					system_flag.FLAGS.BQ_NOT_FOUND =1 ;
+					AT24_Write_32(0,system_flag.FLAG);
+					LED_RED_ON;
+					while(1)
+					{
+						if(HAL_GPIO_ReadPin(PB1_GPIO_Port,PB1_Pin)==0)
+						{
+							break;
+						}
+						
+						else if(usart_PC_command =='a')
+						{
+							break;
+						}
+						sprintf((char *)str,"BQ NOT FOUND");
+						HAL_UART_Transmit(&huart1,str,strlen((char *)str),100);
+					}
+				
+				break;
+				}
+				if(stack_voltage ==0)
+					{
+						LED_RED_ON;
+						counter =0;
+						HAL_Delay(1000);
+						sprintf((char *)str,"DEVICE NOT FOUNDED %d",try_count);
+						HAL_UART_Transmit(&huart3,str,strlen((char *)str),100);
+						try_count++;
+						continue;
+						
+					}
+					
+				sprintf((char *)str,"DEVICE FOUNDED");
+				HAL_UART_Transmit(&huart1,str,strlen((char *)str),100);
+				counter++;
+			
+			}
+		LED_RED_OFF;
+		LED_BLUE_ON;
+		HAL_Delay(500);
+		LED_BLUE_OFF;
+		HAL_Delay(500);
+
+		LED_BLUE_ON;
+		HAL_Delay(500);
+		LED_BLUE_OFF;
+		HAL_Delay(500);
+
+		LED_BLUE_ON;
+		HAL_Delay(500);
+		LED_BLUE_OFF;
+		HAL_Delay(500);	
+		}
+	
+	void ALL_FET_OFF(void)
+	{
+	AFE_FET_ENABLE();
+	fet_status = AFE_ReadFETStatus();
+	if(fet_status.FLAGS.DSG==1)
+		{
+		AFE_DSG_ON();
+		}
+	if(fet_status.FLAGS.CHG==1)
+		{
+		AFE_CHG_ON();	
+		}
+	AFE_FET_ENABLE();
+	}		
+	
+	
+void ALL_CHARGE_ON(void)
+	{
+	 uint8_t  counter=0;
+	 fet_status = AFE_ReadFETStatus();
+	if(!fet_status.FLAGS.CHG)
+		{
+		AFE_CHG_ON();	
+		fet_status = AFE_ReadFETStatus();
+			if(!fet_status.FLAGS.CHG)
+				{
+					AFE_FET_ENABLE();
+					AFE_CHG_ON();	
+					AFE_FET_ENABLE();
+				}		
+
+		}
+	fet_status = AFE_ReadFETStatus();
+	if(fet_status.FLAGS.CHG)
+		{
+			state = step3;
+						for(counter=0; counter < IMEDIATE_BUFFER_SIZE ; counter++)
+								{
+									PACK_Current[counter] = AFE_ReadCurrent();
+												HAL_Delay(10);
+								}
+
+					for(counter=0; counter < MEAN_BUFFER_SIZE ; counter++)
+								{
+									PACK_Current_array[counter]= AFE_ReadCurrent() ;
+												HAL_Delay(10);
+								}	
+		
+		
+		}	
+	}
+		
+	
+void ALL_DECHARGE_ON(void)
+{
+		uint8_t  counter=0;
+		fet_status = AFE_ReadFETStatus();
+		if(!fet_status.FLAGS.DSG)
+			{
+			AFE_DSG_ON();	
+			fet_status = AFE_ReadFETStatus();
+				if(!fet_status.FLAGS.DSG)
+				{
+					AFE_FET_ENABLE();
+					AFE_DSG_ON();	
+					AFE_FET_ENABLE();
+				}
+					
+
+			fet_status = AFE_ReadFETStatus();
+			if(fet_status.FLAGS.DSG)
+				{
+					state = step3;
+									for(counter=0; counter < IMEDIATE_BUFFER_SIZE ; counter++)
+								{
+									PACK_Current[counter] = AFE_ReadCurrent();
+												HAL_Delay(10);
+								}
+
+					for(counter=0; counter < MEAN_BUFFER_SIZE ; counter++)
+								{
+									PACK_Current_array[counter]= AFE_ReadCurrent() ;
+												HAL_Delay(10);
+								}	
+						
+			}
+				
+				
+				}
+}
+	
+
+
+void CURRENT_CHARGE(double voltage){
+	
+					           double   cell_mean_fast;			
+			  static 	     uint8_t  row3;
+				static 	     uint8_t  col3;
+				register     uint8_t  inner_counter=0;
+#if CHARGE_CURRENT_ERROR
+	if(flag.FLAGS.Current)
+				{
+				flag.FLAGS.Current =0;
+					
+				// write bq reading register
+				if(row3==IMEDIATE_BUFFER_SIZE)
+				{
+				row3=0;
+				}
+				if(col3==MEAN_BUFFER_SIZE)
+				{
+				col3=0;
+				}
+	
+					PACK_Current[row3]=AFE_ReadCurrent();		
+					PACK_Current_array[col3] = PACK_Current[row3];
+
+					for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_fast =  cell_mean_fast + PACK_Current[inner_counter];
+						}		
+					cell_mean_fast = (cell_mean_fast/ IMEDIATE_BUFFER_SIZE);
+
+	
+						#if FULL_BATTERY_CHECK
+						if(cell_mean_fast < FULL_CURRENT & voltage > FULL_VOLTAGE)
+						{
+						system_flag.FLAGS.fullcharge =1;
+						DEBUG_PRINT(FULL CHARGE);
+						DFET_SET;
+						system_state = rest;
+							state 			 = step1;
+						}
+						#endif
+						
+						
+						if(cell_mean_fast > MCU_OCC_SET_POINT ){
+							
+							system_flag.FLAGS.OCC=1;
+							DEBUG_PRINT(charge 4);
+							DFET_SET;
+						  ALL_FET_OFF();
+							system_state = rest;
+							state 			 = step1;
+							
+						}
+						cell_mean_fast=0;
+						for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_fast =  cell_mean_fast + PACK_Current_array[inner_counter];
+						}
+						cell_mean_fast = (cell_mean_fast/ MEAN_BUFFER_SIZE);
+					
+						if(cell_mean_fast > MCU_MEAN_OCC_SET_POINT ){
+							DEBUG_PRINT(charge 2);
+							system_flag.FLAGS.OCC=1;
+							DFET_SET;
+							ALL_FET_OFF();
+							system_state = rest;
+							state 			 = step1;
+							}
+				col3++;
+				row3++;
+				
+				}
+	#endif
+}	
+	
+
+
+void CURRENT_DECHARGE(void){
+	
+						         double   cell_mean_fast;		
+			  static 	     uint8_t  row2;
+				static 	     uint8_t  col2;
+				register     uint8_t  inner_counter=0;
+
+	if(flag.FLAGS.Current)
+				{
+				flag.FLAGS.Current =0;
+					
+				// write bq reading register
+				if(row2==IMEDIATE_BUFFER_SIZE)
+				{
+				row2=0;
+				}
+				if(col2==MEAN_BUFFER_SIZE)
+				{
+				col2=0;
+				}
+	
+					PACK_Current[row2]=AFE_ReadCurrent();		
+					PACK_Current_array[col2] = PACK_Current[row2];
+				#if DECHARGE_CURRENT_ERRPR
+					for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_fast =  cell_mean_fast + PACK_Current[inner_counter];
+						}		
+					cell_mean_fast = (cell_mean_fast/ IMEDIATE_BUFFER_SIZE);
+
+ 
+						if((cell_mean_fast < (65535-MCU_OCD_SET_POINT)))
+							{
+							DEBUG_PRINT(discharge 4);
+								system_flag.FLAGS.OCD=1;
+								DFET_SET;
+						  ALL_FET_OFF();
+							LED_GREEN_ON;
+							system_state = rest;
+								state 		= step1;
+							}
+				cell_mean_fast =0;	
+				for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_fast =  cell_mean_fast + PACK_Current_array[inner_counter];
+						}
+					cell_mean_fast = (cell_mean_fast/ MEAN_BUFFER_SIZE);
+					
+						if(cell_mean_fast < (65535-MCU_MEAN_OCD_SET_POINT) ){
+							DEBUG_PRINT(discharge 2);
+							system_flag.FLAGS.OCD=1;
+							DFET_SET;
+							LED_GREEN_ON;
+							ALL_FET_OFF();
+							system_state = rest;
+							state 			 = step1;
+							}
+				
+				#endif
+				col2++;
+				row2++;
+				
+				}
+	
+}	
+	
+
+BATTERY_STATUS_t AFE_BatteryStatus(void) { 
+	// Battery status register - See TRM Table 6-2
+		BATTERY_STATUS_t SafetyStatusA;
+	  SPI_ReadReg(0x12, RX_2Byte, 2);
+		SafetyStatusA.battery_STATUS = (RX_2Byte[1]*256 + RX_2Byte[0]);
+	return SafetyStatusA;
+}
+
+
+
+
+
+uint8_t RELEASE_check_COV(void){
+		
+				register     uint8_t   counter=0;
+				register     uint8_t   inner_counter=0;
+										 double    voltage_mean;
+										 uint8_t	 COV_contdition=0;
+
+								
+	for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+				{
+					// in unit of mv
+					#if CELL1
+					//cell1
+					CellVoltage[0][inner_counter] = AFE_ReadCellVoltage(1);							
+					 
+					#endif
+				
+					#if CELL2
+					//cell1
+					CellVoltage[1][inner_counter] = AFE_ReadCellVoltage(2);							
+					
+					#endif
+					#if CELL3
+					//cell1
+					CellVoltage[2][inner_counter] = AFE_ReadCellVoltage(3);							
+
+					#endif
+					#if CELL4
+					//cell1
+					CellVoltage[3][inner_counter] = AFE_ReadCellVoltage(4);							
+					
+					#endif
+					#if CELL5
+					//cell1
+					CellVoltage[4][inner_counter] = AFE_ReadCellVoltage(5);							
+ 
+					#endif
+					#if CELL6
+					//cell1
+					CellVoltage[5][inner_counter] = AFE_ReadCellVoltage(6);							
+					
+
+					#endif
+					#if CELL7
+					//cell1
+					CellVoltage[6][inner_counter] = AFE_ReadCellVoltage(7);							
+					
+
+					#endif
+					#if CELL8
+					//cell1
+					CellVoltage[7][inner_counter] = AFE_ReadCellVoltage(8);							
+					
+
+					#endif
+					#if CELL9
+					//cell1
+					CellVoltage[8][inner_counter] = AFE_ReadCellVoltage(9);							
+					 
+					#endif
+					#if CELL10
+					//cell1
+					CellVoltage[9][inner_counter] = AFE_ReadCellVoltage(10);							
+					
+					#endif
+					#if CELL11
+					//cell1
+					CellVoltage[10][inner_counter] = AFE_ReadCellVoltage(11);							
+					 
+					#endif					
+
+					
+					#if CELL12
+					//cell1
+					CellVoltage[11][inner_counter] = AFE_ReadCellVoltage(12);							
+					 
+					#endif
+					
+										
+					#if CELL13
+					//cell1
+					CellVoltage[12][inner_counter] = AFE_ReadCellVoltage(13);							
+					
+					#endif
+				
+					#if CELL14
+				
+					//cell1
+						CellVoltage[13][inner_counter] = AFE_ReadCellVoltage(14);							
+						
+						#endif
+										
+					#if CELL15
+					//cell1
+					CellVoltage[14][inner_counter] = AFE_ReadCellVoltage(15);							
+					 
+					#endif
+					
+					
+					#if CELL16
+					//cell1
+					CellVoltage[15][inner_counter] = AFE_ReadCellVoltage(16);							
+					 
+					#endif
+				HAL_Delay(100);
+				}
+	COV_contdition =1;			
+	#if RELEASE_ERROR_CHECK
+			for(counter = 0 ; counter < 16;counter++)
+				{
+					voltage_mean=0;
+					for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						voltage_mean	 =  (voltage_mean + CellVoltage[counter][inner_counter]);
+						}				
+					voltage_mean = (voltage_mean / IMEDIATE_BUFFER_SIZE);
+
+					if(voltage_mean > E_MCU_COV_SET_POINT)
+						{
+						LED_RED_ON;
+						DEBUG_PRINT(release ERROR);
+						system_flag.FLAGS.EMERGANCY_COV=1;
+						system_state = emergancy;
+						DFET_SET;
+						}
+
+					else if(voltage_mean < E_MCU_CUV_SET_POINT)
+						{
+						LED_RED_ON;
+						DEBUG_PRINT(release ERROR);
+						system_flag.FLAGS.EMERGANCY_CUV=1;
+						system_state = emergancy;
+						DFET_SET;
+						}
+					
+						
+						
+					if(voltage_mean > COV_FAST)
+						{
+						DFET_SET;
+						COV_contdition =0;					
+						break;
+						}
+				}
+	#endif	
+return COV_contdition;
+}
+
+uint8_t RELEASE_check_CUV(void){
+		
+				register     uint8_t   counter=0;
+				register     uint8_t   inner_counter=0;
+	
+										 double    voltage_mean;
+	
+										 uint8_t   CUV_contdition=0;
+
+	for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+				{
+					// in unit of mv
+					#if CELL1
+					//cell1
+					CellVoltage[0][inner_counter] = AFE_ReadCellVoltage(1);							
+					 
+					#endif
+				
+					#if CELL2
+					//cell1
+					CellVoltage[1][inner_counter] = AFE_ReadCellVoltage(2);							
+					
+					#endif
+					#if CELL3
+					//cell1
+					CellVoltage[2][inner_counter] = AFE_ReadCellVoltage(3);							
+
+					#endif
+					#if CELL4
+					//cell1
+					CellVoltage[3][inner_counter] = AFE_ReadCellVoltage(4);							
+					
+					#endif
+					#if CELL5
+					//cell1
+					CellVoltage[4][inner_counter] = AFE_ReadCellVoltage(5);							
+ 
+					#endif
+					#if CELL6
+					//cell1
+					CellVoltage[5][inner_counter] = AFE_ReadCellVoltage(6);							
+					
+
+					#endif
+					#if CELL7
+					//cell1
+					CellVoltage[6][inner_counter] = AFE_ReadCellVoltage(7);							
+					
+
+					#endif
+					#if CELL8
+					//cell1
+					CellVoltage[7][inner_counter] = AFE_ReadCellVoltage(8);							
+					
+
+					#endif
+					#if CELL9
+					//cell1
+					CellVoltage[8][inner_counter] = AFE_ReadCellVoltage(9);							
+					 
+					#endif
+					#if CELL10
+					//cell1
+					CellVoltage[9][inner_counter] = AFE_ReadCellVoltage(10);							
+					
+					#endif
+					#if CELL11
+					//cell1
+					CellVoltage[10][inner_counter] = AFE_ReadCellVoltage(11);							
+					 
+					#endif					
+
+					
+					#if CELL12
+					//cell1
+					CellVoltage[11][inner_counter] = AFE_ReadCellVoltage(12);							
+					 
+					#endif
+					
+										
+					#if CELL13
+					//cell1
+					CellVoltage[12][inner_counter] = AFE_ReadCellVoltage(13);							
+					
+					#endif
+				
+					#if CELL14
+				
+					//cell1
+						CellVoltage[13][inner_counter] = AFE_ReadCellVoltage(14);							
+						
+						#endif
+										
+					#if CELL15
+					//cell1
+					CellVoltage[14][inner_counter] = AFE_ReadCellVoltage(15);							
+					 
+					#endif
+					
+					
+					#if CELL16
+					//cell1
+					CellVoltage[15][inner_counter] = AFE_ReadCellVoltage(16);							
+					 
+					HAL_Delay(100);
+				#endif
+				}
+					
+			CUV_contdition =1;
+			#if RELEASE_ERROR_CHECK
+				for(counter = 0 ; counter < 16;counter++)
+				{					
+					voltage_mean =0;
+					for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						voltage_mean	 =  voltage_mean + CellVoltage[counter][inner_counter];
+						}				
+					voltage_mean = (voltage_mean / IMEDIATE_BUFFER_SIZE);
+					if(	voltage_mean < E_MCU_CUV_SET_POINT)
+						{
+						LED_RED_ON;
+						system_flag.FLAGS.EMERGANCY_CUV=1;
+						system_state = emergancy;
+						DFET_SET;
+						}
+					
+						
+					else if(	voltage_mean > E_MCU_COV_SET_POINT)
+						{
+						LED_RED_ON;
+						system_flag.FLAGS.EMERGANCY_COV=1;
+						system_state = emergancy;
+						DFET_SET;
+						}	
+						
+					if(voltage_mean < CUV_FAST)
+						{
+						DFET_SET;
+						state = step1;
+						CUV_contdition =0;
+							break;
+						}
+				}
+			#endif
+	return CUV_contdition;
+}
+
+
+uint8_t temperature_release(void)
+{
+					register     uint8_t   counter=0;	
+					register     uint8_t   inner_counter=0;					
+											 double    temperature_mean;							
+											 uint8_t   temp_contdition=0;
+					
+	
+				temp_contdition =1 ;
+				 //teperature 
+				#if ERROR_TEMP
+					for(counter=0;counter<8;counter++)
+						{ 		
+							temperature_mean =0;
+							for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+							{
+								temp[counter][inner_counter] = temputure[counter].ADC_half_data.upper_byte;
+								temperature_mean =  temperature_mean + temp[counter][inner_counter];
+								delayUS(50);
+							}
+
+							temperature_mean =  (temperature_mean/IMEDIATE_BUFFER_SIZE);
+							if(temperature_mean < UT_FAST | temperature_mean > OT_FAST )
+								{
+								system_flag.FLAGS.HIGH_TEMPERATURE=1;
+								system_flag.FLAGS.LOW_TEMPERATURE=1;	
+								DFET_SET;
+								state = step1;
+								temp_contdition =0;
+								break;
+								}
+
+						}
+					#endif
+			return temp_contdition;				
+}
+
+
+
+double ERROR_check_charge(void){
+				             double   cell_mean_fast;
+				             double   cell_mean_slow;				
+										 double   voltage_mean;
+				static 	     uint8_t  row;
+				static 	     uint8_t  col;
+				register     uint8_t  counter=0;
+				register     uint8_t  inner_counter=0;
+
+				static 	     uint8_t  row1;
+				static 	     uint8_t  col1;
+	if(flag.FLAGS.BQ_scan)
+				{
+				flag.FLAGS.BQ_scan =0;
+					
+				// write bq reading register
+				if(row==IMEDIATE_BUFFER_SIZE)
+				{
+				row=0;
+				}
+				if(col==MEAN_BUFFER_SIZE)
+				{
+				col=0;
+				}
+
+
+#if 1
+				// in unit of mv
+					// in unit of mv
+					#if CELL1
+					//cell1
+					CellVoltage[0][row] = AFE_ReadCellVoltage(1);							
+					
+					cell_array[0][col]=CellVoltage[0][row]; 
+					#endif
+				
+					#if CELL2
+					//cell1
+					CellVoltage[1][row] = AFE_ReadCellVoltage(2);							
+					
+					cell_array[1][col]=CellVoltage[1][row]; 
+					#endif
+					#if CELL3
+					//cell1
+					CellVoltage[2][row] = AFE_ReadCellVoltage(3);							
+					
+					cell_array[2][col]=CellVoltage[2][row]; 
+					#endif
+					#if CELL4
+					//cell1
+					CellVoltage[3][row] = AFE_ReadCellVoltage(4);							
+					
+					cell_array[3][col]=CellVoltage[3][row]; 
+					#endif
+					#if CELL5
+					//cell1
+					CellVoltage[4][row] = AFE_ReadCellVoltage(5);							
+					
+					cell_array[4][col]=CellVoltage[4][row]; 
+					#endif
+					#if CELL6
+					//cell1
+					CellVoltage[5][row] = AFE_ReadCellVoltage(6);							
+					
+					cell_array[5][col]=CellVoltage[5][row]; 
+					#endif
+					#if CELL7
+					//cell1
+					CellVoltage[6][row] = AFE_ReadCellVoltage(7);							
+					
+					cell_array[6][col]=CellVoltage[6][row]; 
+					#endif
+					#if CELL8
+					//cell1
+					CellVoltage[7][row] = AFE_ReadCellVoltage(8);							
+					
+					cell_array[7][col]=CellVoltage[7][row]; 
+					#endif
+					#if CELL9
+					//cell1
+					CellVoltage[8][row] = AFE_ReadCellVoltage(9);							
+					
+					cell_array[8][col]=CellVoltage[8][row]; 
+					#endif
+					#if CELL10
+					//cell1
+					CellVoltage[9][row] = AFE_ReadCellVoltage(10);							
+					
+					cell_array[9][col]=CellVoltage[9][row]; 
+					#endif
+					#if CELL11
+					//cell1
+					CellVoltage[10][row] = AFE_ReadCellVoltage(11);							
+					
+					cell_array[10][col]=CellVoltage[10][row]; 
+					#endif					
+
+					
+					#if CELL12
+					//cell1
+					CellVoltage[11][row] = AFE_ReadCellVoltage(12);							
+					
+					cell_array[11][col]=CellVoltage[11][row]; 
+					#endif
+					
+										
+					#if CELL13
+					//cell1
+					CellVoltage[12][row] = AFE_ReadCellVoltage(13);							
+					
+					cell_array[12][col]=CellVoltage[12][row]; 
+					#endif
+				
+					#if CELL14
+				
+					//cell1
+						CellVoltage[13][row] = AFE_ReadCellVoltage(14);							
+						
+						cell_array[13][col]=CellVoltage[13][row]; 
+						#endif
+										
+					#if CELL15
+					//cell1
+					CellVoltage[14][row] = AFE_ReadCellVoltage(15);							
+					
+					cell_array[14][col]=CellVoltage[14][row]; 
+					#endif
+					
+					
+					#if CELL16
+					//cell1
+					CellVoltage[15][row] = AFE_ReadCellVoltage(16);							
+					
+					cell_array[15][col]=CellVoltage[15][row]; 
+					#endif
+	#endif				
+			#if VOLTAGE_ERROR	
+			for(counter=0 ; counter<16 ; counter++)
+			{
+				cell_mean_slow =0 ;
+				cell_mean_fast =0;
+				for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_fast =  cell_mean_fast + CellVoltage[counter][inner_counter];
+						}
+					for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_slow =  cell_mean_slow+ cell_array[counter][inner_counter];
+						}
+						
+					cell_mean_slow = (cell_mean_slow / MEAN_BUFFER_SIZE);
+					cell_mean_fast = (cell_mean_fast / IMEDIATE_BUFFER_SIZE);
+					if(cell_mean_fast > MCU_COV_SET_POINT | cell_mean_slow >  MCU_MEAN_COV_SET_POINT)
+					//COV  check
+						{
+						DFET_SET;
+						ALL_FET_OFF();	
+						DEBUG_PRINT(COV set);
+						system_flag.FLAGS.COV=1;
+						state = step1;
+						// ov voltage or under voltage flag set
+						
+						if(cell_mean_fast > E_MCU_COV_SET_POINT)
+						{
+						system_state = emergancy;
+						state 			 = step1;
+						LED_RED_ON;
+						system_flag.FLAGS.EMERGANCY_COV=1;
+						
+
+						}
+						}						
+					else if(cell_mean_fast<MCU_CUV_SET_POINT  | cell_mean_slow <  MCU_MEAN_CUV_SET_POINT)
+					//CUV check
+						{
+						DFET_SET;
+						ALL_FET_OFF();
+						system_flag.FLAGS.CUV=1;
+						state 			 = step1;
+							
+							// ov voltage or under voltage flag set
+						if(cell_mean_fast<E_MCU_CUV_SET_POINT)
+						{
+						LED_RED_ON;
+						system_flag.FLAGS.EMERGANCY_CUV=1;
+						system_state = emergancy;
+						state 			 = step1;
+						}
+						
+						}						
+					}
+					Stack_Voltage[row] = AFE_ReadStackVoltage();
+					Stack_Voltage[col] = Stack_Voltage[row];
+					cell_mean_slow =0 ;
+
+					for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_slow =  cell_mean_slow + Stack_Voltage[inner_counter];
+						}		
+
+					
+					cell_mean_slow = (cell_mean_slow/ IMEDIATE_BUFFER_SIZE);
+					voltage_mean = cell_mean_slow;
+					if(cell_mean_slow > MCU_MAX_STACK_VOLT |  cell_mean_slow< MCU_MIN_STACK_VOLT ){
+							DFET_SET;
+							ALL_FET_OFF();
+							state 			 = step1;
+							}	
+					cell_mean_slow =0 ;
+					for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+						{
+						cell_mean_slow =  cell_mean_slow + Stack_Voltage[inner_counter];
+						}
+					cell_mean_slow = (cell_mean_slow/ MEAN_BUFFER_SIZE);
+							if(cell_mean_slow > MCU_MEAN_MAX_STACK_VOLT |  cell_mean_slow< MCU_MEAN_MIN_STACK_VOLT ){
+							DFET_SET;
+							ALL_FET_OFF();
+							state 			 = step1;
+							}					
+				
+			#endif
+				col++;
+				row++;
+				
+				}
+			
+		#if ERROR_TEMP		
+		//teperature 
+			if(flag.FLAGS.temputure)
+				{
+					flag.FLAGS.temputure=0;
+					double       cell_mean_fast;
+					double       cell_mean_slow;
+					if(row1 == IMEDIATE_BUFFER_SIZE)
+					{
+					row1 =0;
+					}
+					if(col1 == MEAN_BUFFER_SIZE)
+					{
+					col1 =0;
+					}
+					for(counter=0;counter<8;counter++)
+						{ 	
+							temp[counter][row1] = temputure[counter].ADC_half_data.upper_byte;							
+							temp[counter][col1] =	temp[counter][row1];
+							cell_mean_slow =0 ;
+							cell_mean_fast =0;
+							for(inner_counter= 0 ;inner_counter < IMEDIATE_BUFFER_SIZE;inner_counter++)
+							{
+								cell_mean_fast =  cell_mean_fast + temp[counter][inner_counter];
+							}	
+							for(inner_counter= 0 ;inner_counter < MEAN_BUFFER_SIZE;inner_counter++)
+							{
+								cell_mean_slow =  cell_mean_slow + temp_array[counter][inner_counter];
+							}	
+							cell_mean_fast = (cell_mean_fast / IMEDIATE_BUFFER_SIZE);
+							cell_mean_slow = (cell_mean_slow / MEAN_BUFFER_SIZE);
+						
+		
+					if(cell_mean_fast>MAX_TEMP_SET_POINT | cell_mean_slow>MEAN_HIGH_TEMP_SET_POINT)
+						{
+							system_flag.FLAGS.HIGH_TEMPERATURE=1;
+							DFET_SET;	
+							state = step1;
+						}
+					if(cell_mean_fast<MIN_TEMP_SET_POINT | cell_mean_slow<MEAN_LOW_TEMP_SET_POINT)
+						{
+							system_flag.FLAGS.LOW_TEMPERATURE=1;
+							DFET_SET;	
+							state = step1;
+						}
+					}
+				row1++;
+				col1++;
+				}
+			#endif
+
+return voltage_mean;
+}
+
+
+void send_to_pc(void)
+	{
+					
+						 uint16_t voltage_buffer[16];
+						 uint16_t current[1];
+						 uint8_t  str[40];
+		register uint8_t 	cnt;
+		
+		
+				voltage_buffer[0] = AFE_ReadCellVoltage(1);							
+				voltage_buffer[1] = AFE_ReadCellVoltage(2);
+				voltage_buffer[2] = AFE_ReadCellVoltage(3);
+				voltage_buffer[3] = AFE_ReadCellVoltage(4);							
+				voltage_buffer[4] = AFE_ReadCellVoltage(5);
+				voltage_buffer[5] = AFE_ReadCellVoltage(6);
+				voltage_buffer[6] = AFE_ReadCellVoltage(7);							
+				voltage_buffer[7] = AFE_ReadCellVoltage(8);
+				voltage_buffer[8] = AFE_ReadCellVoltage(9);
+				voltage_buffer[9] = AFE_ReadCellVoltage(10);	
+				voltage_buffer[10] = AFE_ReadCellVoltage(11);	
+				voltage_buffer[11] = AFE_ReadCellVoltage(12);	
+				voltage_buffer[12] = AFE_ReadCellVoltage(13);		
+				voltage_buffer[13] = AFE_ReadCellVoltage(14);
+				voltage_buffer[14] = AFE_ReadCellVoltage(15);
+				voltage_buffer[15] = AFE_ReadCellVoltage(16);		
+				current[0] = AFE_ReadCurrent();
+				
+				
+				//system state
+				sprintf((char *)str,"\r\n%d",system_flag.FLAG);
+				HAL_UART_Transmit(&huart1,str ,strlen((char *)str), 100);
+				
+				// voltage
+				for(cnt=0 ; cnt<16 ; cnt++)
+				{
+				sprintf((char *)str,"\r\n%d",voltage_buffer[cnt]);
+				HAL_UART_Transmit(&huart1,str ,strlen((char *)str), 100);				
+				}	
+					
+				//current
+				sprintf((char *)str,"\r\n%d",current[0]);
+				HAL_UART_Transmit(&huart1,str ,strlen((char *)str), 100);
+				
+				
+				//temerature
+				for(cnt=0 ; cnt<8 ; cnt++)
+				{
+				sprintf((char *)str,"\r\n%d",temputure[cnt].ADC_half_data.upper_byte);
+				HAL_UART_Transmit(&huart1,str ,strlen((char *)str), 100);				
+				}	
+
+				
+	
+	
+	
+	
+	}
+
+#if TEST
+void AFE_ReadPassQ(void) {
+	// Read Accumulated Charge and Time from DASTATUS6 (See TRM Table 4-6)
+	TX_2Byte[0] = 0x75; TX_2Byte[1] = 0x00;
+	SPI_WriteReg(0x3E,TX_2Byte,2);
+	delayUS(1000);
+	SPI_ReadReg(0x40, RX_32Byte, 32);
+	
+	average_cell_temp = ( (RX_32Byte[11]<<8) + RX_32Byte[10]);
+	fet_temp					= ( (RX_32Byte[13]<<8) + RX_32Byte[12]);
+	MAX_CELL_TEMP			=	( (RX_32Byte[15]<<8) + RX_32Byte[14]);
+	MIN_CELL_TEMP			=	( (RX_32Byte[17]<<8) + RX_32Byte[16]);
+	AVG_CELL_TEMP			=	( (RX_32Byte[19]<<8) + RX_32Byte[18]);
+//	AccumulatedCharge_Int = ((RX_12Byte[3]<<24) + (RX_12Byte[2]<<16) + (RX_12Byte[1]<<8) + RX_12Byte[0]);
+//	AccumulatedCharge_Frac = ((RX_12Byte[7]<<24) + (RX_12Byte[6]<<16) + (RX_12Byte[5]<<8) + RX_12Byte[4]);
+//	AccumulatedCharge_Time = ((RX_12Byte[11]<<24) + (RX_12Byte[10]<<16) + (RX_12Byte[9]<<8) + RX_12Byte[8]);
+}
+
+
+void CB_ACTIVE_CELLS(void) { 
+	// Check status of which cells are balancing
+	
+	
+	TX_2Byte[0] = 0x83; TX_2Byte[1] = 0x00;
+	SPI_WriteReg(0x3E,TX_2Byte,2);
+	SPI_ReadReg(0x40, RX_2Byte, 2);
+  CB_ActiveCells = (RX_2Byte[1]*256 + RX_2Byte[0]);
+}
+
+
+uint32_t AFE_ReadInternaldie(void) {
+	SPI_ReadReg(0x68, RX_4Byte, 4);
+	return (((RX_4Byte[3]<<24)  + (RX_4Byte[2]<<16) + (RX_4Byte[1]<<8) + (RX_4Byte[0])/10));     // cell voltage is reported in mV
+}
+
+
+
+
+
+uint16_t AFE_ReadLDVoltage() {
+	SPI_ReadReg(0x38, RX_2Byte, 2);
+	return 10 * (RX_2Byte[1]*256 + RX_2Byte[0]);  // voltage is reported in 0.01V units
+}
+#endif	
+
+
+void PACK_CHECK(void)
+{
+	uint16_t pack_voltage;
+			
+	pack_voltage = AFE_ReadPackVoltage();
+
+	if(( pack_voltage > CHARGER_MAX_VOLTAGE_HIGH)|(pack_voltage < CHARGER_MIN_VOLTAGE_LOW))
+			{
+				DEBUG_PRINT(step3);
+				DEBUG_VALUE(pack_voltage);
+				DFET_SET;
+				ALL_FET_OFF();
+				state = step1;
+				HAL_Delay(500);
+				
+			}
+
+
+}
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
