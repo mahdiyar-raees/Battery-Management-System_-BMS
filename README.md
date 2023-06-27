@@ -1,5 +1,5 @@
 # Project overview 
-this project contains two different types of boards. Slave and Master boards which slave board is responsible for the management of battery charge and discharging and MAster gives the project a scalable feature that could be implemented on the bigger battery pack. in this repository, I only share the source code of the slave board and the master code should be programmed based on individual project needs.
+This project contains two different types of boards: a Slave board and a Master board. The Slave board is responsible for managing battery charge, discharge, and balancing of the cell battery, while the Master board provides the project with a scalable feature that can be implemented on a larger battery pack. In this repository, I am only sharing the source code of the Slave board, and the Master code should be programmed based on individual project needs.
 
 ## publication
 for more detail about this project you can read this article published by IEEE:
